@@ -1,0 +1,1096 @@
+openapi: 3.0.3
+
+info:
+  title: PiggyGang Indexer API
+  version: 1.0.0
+  contact:
+    name: ALGOLAB
+  description: |
+    Public read-only REST API over the indexed Piggy collections — browse with
+    attribute filters, facets, text search, per-NFT detail, activity timelines,
+    ownership history and wallet portfolios. This file is the frozen v1
+    contract (ALG-620): the PiggyGang Explorer generates its typed client from
+    it and builds against a mock of it, so changes here are breaking-change
+    reviews, not edits.
+
+    Conventions:
+
+    - **Versioning** lives in the server URL (`/v1`), not in the path keys
+      below. Clients switch environments by swapping the base URL only.
+    - **JSON is camelCase.** Every response field is *required*: absence is
+      expressed as an explicit `null`, never as a missing key. Clients may
+      therefore treat a missing key as a contract violation.
+    - **Pagination is cursor-based** (stable under live inserts). `cursor` is
+      an opaque token from `pageInfo.nextCursor`; clients must pass it back
+      verbatim and must not parse it.
+    - **Caching:** 200 responses carry a short-TTL `Cache-Control` and an
+      `ETag`; conditional requests with `If-None-Match` may return 304.
+    - **Rate limiting** uses the IETF draft `RateLimit-Limit` /
+      `RateLimit-Remaining` / `RateLimit-Reset` headers on every response;
+      429 adds `Retry-After`.
+    - **No authentication.** The API is public and read-only. CORS for browser
+      clients arrives with the implementation (ALG-625); the Explorer fetches
+      server-side in the meantime.
+    - `GET /health` (liveness) is deliberately outside `/v1` and outside this
+      contract.
+
+# The API is public and read-only; there is deliberately no auth.
+security: []
+
+servers:
+  - url: http://localhost:8080/v1
+    description: Local development (`cargo run -p indexer-api`).
+  - url: https://REPLACE-ME.up.railway.app/v1
+    description: >-
+      Production placeholder — the Railway domain is not provisioned yet
+      (README, one-time bootstrap step 7). Replace once `railway domain
+      --service api` has been run.
+
+tags:
+  - name: collections
+    description: Collections, browse with attribute filters, facets.
+  - name: nfts
+    description: Individual NFTs — detail, activity timeline, ownership history.
+  - name: wallets
+    description: Wallet portfolios across the indexed collections.
+
+paths:
+  /collections:
+    get:
+      operationId: listCollections
+      tags: [collections]
+      summary: List all indexed collections with stats
+      description: >-
+        Returns every enabled collection in the registry with its current
+        stats. Unpaginated by design: the registry is small (3 collections
+        today) and grows only by deliberate registry changes.
+      responses:
+        "200":
+          description: The collections.
+          headers: &StandardHeaders
+            ETag:
+              $ref: "#/components/headers/ETag"
+            RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionListResponse"
+              examples:
+                collections:
+                  summary: The three Piggy collections
+                  value:
+                    data:
+                      - slug: piggy-sol-gang
+                        name: Piggy SOL Gang
+                        standard: token_metadata
+                        address: null
+                        imageUrl: null
+                        stats:
+                          supply: 10000
+                          holders: 2914
+                          activity24h: 12
+                          activity7d: 87
+                      - slug: piggy-girl-gang
+                        name: Piggy Girl Gang
+                        standard: token_metadata
+                        address: null
+                        imageUrl: null
+                        stats:
+                          supply: 5000
+                          holders: 1408
+                          activity24h: 5
+                          activity7d: 41
+                      - slug: piggy-gang
+                        name: Piggy Gang
+                        standard: core
+                        address: J3nHgSDJj6CPj2ypuDWNuvuiYii965RcSmFAPQVDWA18
+                        imageUrl: null
+                        stats:
+                          supply: 10000
+                          holders: 3120
+                          activity24h: 18
+                          activity7d: 122
+        "304":
+          $ref: "#/components/responses/NotModified"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /collections/{slug}:
+    get:
+      operationId: getCollection
+      tags: [collections]
+      summary: Get one collection with stats
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "200":
+          description: The collection.
+          headers: *StandardHeaders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionResponse"
+              examples:
+                piggy-sol-gang:
+                  summary: Piggy SOL Gang
+                  value:
+                    data:
+                      slug: piggy-sol-gang
+                      name: Piggy SOL Gang
+                      standard: token_metadata
+                      address: null
+                      imageUrl: null
+                      stats:
+                        supply: 10000
+                        holders: 2914
+                        activity24h: 12
+                        activity7d: 87
+                piggy-girl-gang:
+                  summary: Piggy Girl Gang
+                  value:
+                    data:
+                      slug: piggy-girl-gang
+                      name: Piggy Girl Gang
+                      standard: token_metadata
+                      address: null
+                      imageUrl: null
+                      stats:
+                        supply: 5000
+                        holders: 1408
+                        activity24h: 5
+                        activity7d: 41
+                piggy-gang:
+                  summary: Piggy Gang
+                  value:
+                    data:
+                      slug: piggy-gang
+                      name: Piggy Gang
+                      standard: core
+                      address: J3nHgSDJj6CPj2ypuDWNuvuiYii965RcSmFAPQVDWA18
+                      imageUrl: null
+                      stats:
+                        supply: 10000
+                        holders: 3120
+                        activity24h: 18
+                        activity7d: 122
+        "304":
+          $ref: "#/components/responses/NotModified"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /collections/{slug}/nfts:
+    get:
+      operationId: listCollectionNfts
+      tags: [collections]
+      summary: Browse a collection's NFTs
+      description: >-
+        Cursor-paginated browse over a collection's NFTs with attribute
+        filters, text search, an owner filter and sorting. Filter semantics:
+        values of the same trait type OR together, distinct trait types AND
+        together. Pagination is stable under live updates (cursor-based, never
+        offset-based).
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+        - $ref: "#/components/parameters/TraitFilter"
+        - $ref: "#/components/parameters/TextSearch"
+        - $ref: "#/components/parameters/Sort"
+        - $ref: "#/components/parameters/OwnerFilter"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: One page of NFTs.
+          headers: *StandardHeaders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NftListResponse"
+              examples:
+                first-page:
+                  summary: First page of Piggy SOL Gang, default sort
+                  value:
+                    data:
+                      - id: 4rrfNiudjPsG8nyQxnG9z5V7dxJ3L9Xw6s3YVhg2bSLK
+                        collectionSlug: piggy-sol-gang
+                        name: "Piggy SOL Gang #1"
+                        number: 1
+                        imageUrl: null
+                        burned: false
+                      - id: ETRUnBFRcXEYLTUfw3ysD5cvCzUBmjPwZrvbXY1rcjEf
+                        collectionSlug: piggy-sol-gang
+                        name: "Piggy SOL Gang #2"
+                        number: 2
+                        imageUrl: null
+                        burned: false
+                      - id: 2iqkp5GhCPi7Sv75SW12PYy234R53FTe6NaEx7Uusq1k
+                        collectionSlug: piggy-sol-gang
+                        name: "Piggy SOL Gang #3"
+                        number: 3
+                        imageUrl: null
+                        burned: false
+                    pageInfo:
+                      limit: 24
+                      nextCursor: b2Zmc2V0OjI0
+                      total: 10000
+        "304":
+          $ref: "#/components/responses/NotModified"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /collections/{slug}/facets:
+    get:
+      operationId: getCollectionFacets
+      tags: [collections]
+      summary: Trait facets for a collection
+      description: >-
+        Every trait type with its values and counts, recomputed against the
+        active filters. Counting is disjunctive (standard marketplace
+        behavior): counts for trait type T are computed with T's own active
+        filter removed and every other active filter (other trait types, `q`)
+        applied — so users can widen a selection within a type without facets
+        collapsing to zero. Values are sorted by count descending.
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+        - $ref: "#/components/parameters/TraitFilter"
+        - $ref: "#/components/parameters/TextSearch"
+      responses:
+        "200":
+          description: The facets.
+          headers: *StandardHeaders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FacetsResponse"
+              examples:
+                facets:
+                  summary: Facets with no active filters
+                  value:
+                    data:
+                      - traitType: Background
+                        values:
+                          - value: Pink
+                            count: 1130
+                          - value: Blue
+                            count: 987
+                          - value: Green
+                            count: 704
+                      - traitType: Eyes
+                        values:
+                          - value: Chill
+                            count: 1490
+                          - value: Laser
+                            count: 302
+                      - traitType: Head
+                        values:
+                          - value: Beanie
+                            count: 412
+                          - value: Crown
+                            count: 198
+        "304":
+          $ref: "#/components/responses/NotModified"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /nfts/{id}:
+    get:
+      operationId: getNft
+      tags: [nfts]
+      summary: Full NFT detail
+      description: >-
+        Full detail for one NFT: attributes, current owner, its collection,
+        standard and burned flag.
+      parameters:
+        - $ref: "#/components/parameters/NftId"
+      responses:
+        "200":
+          description: The NFT.
+          headers: *StandardHeaders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NftResponse"
+              examples:
+                nft:
+                  summary: Piggy SOL Gang #1
+                  value:
+                    data:
+                      id: 4rrfNiudjPsG8nyQxnG9z5V7dxJ3L9Xw6s3YVhg2bSLK
+                      collectionSlug: piggy-sol-gang
+                      name: "Piggy SOL Gang #1"
+                      number: 1
+                      imageUrl: null
+                      burned: false
+                      standard: token_metadata
+                      metadataUri: null
+                      owner: Examp1eWa11etAaa1111111111111111111111111111
+                      collection:
+                        slug: piggy-sol-gang
+                        name: Piggy SOL Gang
+                        standard: token_metadata
+                        address: null
+                        imageUrl: null
+                      attributes:
+                        - traitType: Background
+                          value: Pink
+                        - traitType: Body
+                          value: Pink
+                        - traitType: Clothes
+                          value: Hoodie
+                        - traitType: Eyes
+                          value: Chill
+                        - traitType: Mouth
+                          value: Smirk
+                        - traitType: Head
+                          value: Beanie
+                        - traitType: Earring
+                          value: Gold Hoop
+        "304":
+          $ref: "#/components/responses/NotModified"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /nfts/{id}/activity:
+    get:
+      operationId: listNftActivity
+      tags: [nfts]
+      summary: NFT activity timeline
+      description: >-
+        Cursor-paginated on-chain event timeline for one NFT — mints,
+        transfers, sales (with price and marketplace) and burns. Newest first.
+      parameters:
+        - $ref: "#/components/parameters/NftId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: One page of events, newest first.
+          headers: *StandardHeaders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityListResponse"
+              examples:
+                activity:
+                  summary: Sale, transfer and mint
+                  value:
+                    data:
+                      - type: sale
+                        signature: Examp1eS1gnatureSa1e1111111111111111111111111111111111111111111111111111111111111111111
+                        slot: 303245117
+                        timestamp: "2026-08-20T14:33:07Z"
+                        from: Examp1eWa11etBbb1111111111111111111111111111
+                        to: Examp1eWa11etAaa1111111111111111111111111111
+                        priceLamports: 1450000000
+                        marketplace: Magic Eden
+                      - type: transfer
+                        signature: Examp1eS1gnatureXfer1111111111111111111111111111111111111111111111111111111111111111111
+                        slot: 298112004
+                        timestamp: "2026-06-30T09:12:44Z"
+                        from: Examp1eWa11etAaa1111111111111111111111111111
+                        to: Examp1eWa11etBbb1111111111111111111111111111
+                        priceLamports: null
+                        marketplace: null
+                      - type: mint
+                        signature: Examp1eS1gnatureMint1111111111111111111111111111111111111111111111111111111111111111111
+                        slot: 251003980
+                        timestamp: "2025-11-02T18:05:21Z"
+                        from: null
+                        to: Examp1eWa11etAaa1111111111111111111111111111
+                        priceLamports: null
+                        marketplace: null
+                    pageInfo:
+                      limit: 24
+                      nextCursor: null
+                      total: 3
+        "304":
+          $ref: "#/components/responses/NotModified"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /nfts/{id}/owners:
+    get:
+      operationId: listNftOwners
+      tags: [nfts]
+      summary: NFT ownership history
+      description: >-
+        Cursor-paginated ownership history for one NFT, newest first. The
+        current owner is the record whose `toSlot`/`toTimestamp` are null.
+      parameters:
+        - $ref: "#/components/parameters/NftId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: One page of ownership records, newest first.
+          headers: *StandardHeaders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnersListResponse"
+              examples:
+                owners:
+                  summary: Current owner plus two prior holders
+                  value:
+                    data:
+                      - owner: Examp1eWa11etAaa1111111111111111111111111111
+                        fromSlot: 303245117
+                        fromTimestamp: "2026-08-20T14:33:07Z"
+                        toSlot: null
+                        toTimestamp: null
+                      - owner: Examp1eWa11etBbb1111111111111111111111111111
+                        fromSlot: 298112004
+                        fromTimestamp: "2026-06-30T09:12:44Z"
+                        toSlot: 303245117
+                        toTimestamp: "2026-08-20T14:33:07Z"
+                      - owner: Examp1eWa11etAaa1111111111111111111111111111
+                        fromSlot: 251003980
+                        fromTimestamp: "2025-11-02T18:05:21Z"
+                        toSlot: 298112004
+                        toTimestamp: "2026-06-30T09:12:44Z"
+                    pageInfo:
+                      limit: 24
+                      nextCursor: null
+                      total: 3
+        "304":
+          $ref: "#/components/responses/NotModified"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /wallets/{address}/nfts:
+    get:
+      operationId: listWalletNfts
+      tags: [wallets]
+      summary: Wallet portfolio across indexed collections
+      description: >-
+        Every indexed NFT currently owned by a wallet, grouped by collection.
+        Unpaginated by design: each group carries `totalCount` plus the first
+        page of NFTs; "see all" flows page through
+        `listCollectionNfts?owner=<address>` instead of a nested cursor.
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+      responses:
+        "200":
+          description: The portfolio, grouped by collection.
+          headers: *StandardHeaders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletNftsResponse"
+              examples:
+                portfolio:
+                  summary: A wallet holding two Piggy SOL Gang NFTs
+                  value:
+                    data:
+                      - collection:
+                          slug: piggy-sol-gang
+                          name: Piggy SOL Gang
+                          standard: token_metadata
+                          address: null
+                          imageUrl: null
+                        totalCount: 2
+                        nfts:
+                          - id: 4rrfNiudjPsG8nyQxnG9z5V7dxJ3L9Xw6s3YVhg2bSLK
+                            collectionSlug: piggy-sol-gang
+                            name: "Piggy SOL Gang #1"
+                            number: 1
+                            imageUrl: null
+                            burned: false
+                          - id: 2iqkp5GhCPi7Sv75SW12PYy234R53FTe6NaEx7Uusq1k
+                            collectionSlug: piggy-sol-gang
+                            name: "Piggy SOL Gang #3"
+                            number: 3
+                            imageUrl: null
+                            burned: false
+        "304":
+          $ref: "#/components/responses/NotModified"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+components:
+  parameters:
+    Slug:
+      name: slug
+      in: path
+      required: true
+      description: Collection slug — the stable public identifier.
+      schema:
+        type: string
+        example: piggy-sol-gang
+
+    NftId:
+      name: id
+      in: path
+      required: true
+      description: >-
+        NFT id — the base58 mint address (token_metadata) or asset id (core).
+      schema:
+        type: string
+
+    WalletAddress:
+      name: address
+      in: path
+      required: true
+      description: Base58 wallet address.
+      schema:
+        type: string
+
+    TraitFilter:
+      name: trait
+      in: query
+      required: false
+      style: deepObject
+      explode: true
+      schema:
+        type: object
+        additionalProperties:
+          type: array
+          items:
+            type: string
+      description: >-
+        Attribute filter. Serialization is normative here, not the deepObject
+        style (OpenAPI leaves arrays inside deepObject undefined): each
+        selected value is one `trait[<TraitType>]=<Value>` query pair.
+        Repeating a trait type ORs its values; distinct trait types AND
+        together. `?trait[Background]=Pink&trait[Background]=Blue&trait[Head]=Crown`
+        means (Background is Pink OR Blue) AND Head is Crown. Trait types and
+        values are matched exactly (case-sensitive) against indexed
+        attributes.
+
+    TextSearch:
+      name: q
+      in: query
+      required: false
+      description: >-
+        Free-text search over NFT name, #number and mint/asset id.
+      schema:
+        type: string
+        minLength: 1
+
+    Sort:
+      name: sort
+      in: query
+      required: false
+      description: >-
+        Sort order; a leading `-` means descending. `number`/`name` sort by
+        token number and display name. `-activity` sorts by most recent
+        on-chain activity and has no ascending form.
+      schema:
+        type: string
+        enum: [number, -number, name, -name, -activity]
+        default: number
+
+    OwnerFilter:
+      name: owner
+      in: query
+      required: false
+      description: >-
+        Restrict to NFTs currently owned by this base58 wallet address. This
+        is also the paging path for wallet portfolios (see `listWalletNfts`).
+      schema:
+        type: string
+
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: >-
+        Opaque pagination token from `pageInfo.nextCursor`; pass it back
+        verbatim. Clients must not parse it.
+      schema:
+        type: string
+
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Page size.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 24
+
+  headers:
+    ETag:
+      description: >-
+        Entity tag for conditional requests; send it back via `If-None-Match`
+        to get a 304 when the resource is unchanged.
+      schema:
+        type: string
+
+    RateLimitLimit:
+      description: Request quota in the current window (IETF draft RateLimit headers).
+      schema:
+        type: integer
+
+    RateLimitRemaining:
+      description: Requests remaining in the current window.
+      schema:
+        type: integer
+
+    RateLimitReset:
+      description: Seconds until the current rate-limit window resets.
+      schema:
+        type: integer
+
+    RetryAfter:
+      description: Seconds to wait before retrying.
+      schema:
+        type: integer
+
+  responses:
+    NotModified:
+      description: >-
+        Not Modified — the client's `If-None-Match` matched the current ETag.
+        No body.
+      headers:
+        ETag:
+          $ref: "#/components/headers/ETag"
+
+    BadRequest:
+      description: >-
+        Malformed request — unknown sort value, out-of-range limit,
+        unparseable cursor, malformed trait filter.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            bad-request:
+              value:
+                error:
+                  code: bad_request
+                  message: unknown sort value
+
+    NotFound:
+      description: The requested resource does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            not-found:
+              value:
+                error:
+                  code: not_found
+                  message: resource not found
+
+    RateLimited:
+      description: Rate limit exceeded.
+      headers:
+        Retry-After:
+          $ref: "#/components/headers/RetryAfter"
+        RateLimit-Limit:
+          $ref: "#/components/headers/RateLimitLimit"
+        RateLimit-Remaining:
+          $ref: "#/components/headers/RateLimitRemaining"
+        RateLimit-Reset:
+          $ref: "#/components/headers/RateLimitReset"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            rate-limited:
+              value:
+                error:
+                  code: rate_limited
+                  message: rate limit exceeded
+
+    Internal:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            internal:
+              value:
+                error:
+                  code: internal
+                  message: internal error
+
+  schemas:
+    Collection:
+      type: object
+      description: A collection tracked by the indexer's registry.
+      required: [slug, name, standard, address, imageUrl]
+      properties:
+        slug:
+          type: string
+          description: >-
+            URL-safe stable identifier; the public key for all collection
+            routes.
+        name:
+          type: string
+          description: Display name.
+        standard:
+          type: string
+          enum: [token_metadata, core]
+          description: >-
+            On-chain standard — Metaplex Token Metadata or Metaplex Core.
+        address:
+          type: string
+          nullable: true
+          description: >-
+            On-chain collection address — the verified collection mint for
+            `token_metadata`, the CollectionV1 asset for `core`. The two Token
+            Metadata collection addresses are not yet recorded (team to
+            supply); null until then. Filling them is a data change, not a
+            contract change — never invent one.
+        imageUrl:
+          type: string
+          nullable: true
+          description: Collection display image; null until media ingestion lands.
+
+    CollectionStats:
+      type: object
+      description: Cached collection stats (short TTL).
+      required: [supply, holders, activity24h, activity7d]
+      properties:
+        supply:
+          type: integer
+          description: Number of non-burned NFTs.
+        holders:
+          type: integer
+          description: Distinct current owners.
+        activity24h:
+          type: integer
+          description: On-chain events in the last 24 hours.
+        activity7d:
+          type: integer
+          description: On-chain events in the last 7 days.
+
+    CollectionWithStats:
+      allOf:
+        - $ref: "#/components/schemas/Collection"
+        - type: object
+          required: [stats]
+          properties:
+            stats:
+              $ref: "#/components/schemas/CollectionStats"
+
+    NftAttribute:
+      type: object
+      required: [traitType, value]
+      properties:
+        traitType:
+          type: string
+          description: Trait type as recorded in the source metadata (e.g. Background, Eyes, Head).
+        value:
+          type: string
+
+    NftSummary:
+      type: object
+      description: The browse/list projection of an NFT.
+      required: [id, collectionSlug, name, number, imageUrl, burned]
+      properties:
+        id:
+          type: string
+          description: >-
+            Public NFT id — the base58 mint address (`token_metadata`) or
+            asset id (`core`).
+        collectionSlug:
+          type: string
+        name:
+          type: string
+          description: Display name from metadata.
+        number:
+          type: integer
+          nullable: true
+          description: The #N parsed from the name; null if unparsable.
+        imageUrl:
+          type: string
+          nullable: true
+          description: Image URL; null when media has not been ingested.
+        burned:
+          type: boolean
+
+    NftDetail:
+      allOf:
+        - $ref: "#/components/schemas/NftSummary"
+        - type: object
+          required: [standard, metadataUri, owner, collection, attributes]
+          properties:
+            standard:
+              type: string
+              enum: [token_metadata, core]
+            metadataUri:
+              type: string
+              nullable: true
+              description: >-
+                Off-chain metadata URI as recorded on chain; null when
+                unavailable.
+            owner:
+              type: string
+              nullable: true
+              description: Current owner (base58); null when burned.
+            collection:
+              $ref: "#/components/schemas/Collection"
+            attributes:
+              type: array
+              items:
+                $ref: "#/components/schemas/NftAttribute"
+
+    ActivityEvent:
+      type: object
+      description: One on-chain event in an NFT's timeline.
+      required: [type, signature, slot, timestamp, from, to, priceLamports, marketplace]
+      properties:
+        type:
+          type: string
+          enum: [mint, transfer, sale, burn]
+        signature:
+          type: string
+          description: Transaction signature (base58).
+        slot:
+          type: integer
+          format: int64
+          description: >-
+            Solana slot. Serialized as a JSON number — realistic slots stay
+            far below 2^53, so this is lossless; the server must not switch to
+            a string encoding without a contract revision.
+        timestamp:
+          type: string
+          format: date-time
+        from:
+          type: string
+          nullable: true
+          description: Sending wallet; null for mints.
+        to:
+          type: string
+          nullable: true
+          description: Receiving wallet; null for burns.
+        priceLamports:
+          type: integer
+          format: int64
+          nullable: true
+          description: >-
+            Sale price in lamports; non-null only for `sale` events. JSON
+            number — realistic prices stay far below 2^53.
+        marketplace:
+          type: string
+          nullable: true
+          description: Marketplace name; non-null only for `sale` events.
+
+    OwnershipRecord:
+      type: object
+      description: >-
+        One ownership interval. The current owner is the record whose
+        `toSlot`/`toTimestamp` are null.
+      required: [owner, fromSlot, fromTimestamp, toSlot, toTimestamp]
+      properties:
+        owner:
+          type: string
+          description: Owner wallet (base58).
+        fromSlot:
+          type: integer
+          format: int64
+        fromTimestamp:
+          type: string
+          format: date-time
+        toSlot:
+          type: integer
+          format: int64
+          nullable: true
+        toTimestamp:
+          type: string
+          format: date-time
+          nullable: true
+
+    TraitFacetValue:
+      type: object
+      required: [value, count]
+      properties:
+        value:
+          type: string
+        count:
+          type: integer
+
+    TraitFacet:
+      type: object
+      required: [traitType, values]
+      properties:
+        traitType:
+          type: string
+        values:
+          type: array
+          description: Sorted by count descending.
+          items:
+            $ref: "#/components/schemas/TraitFacetValue"
+
+    PageInfo:
+      type: object
+      required: [limit, nextCursor, total]
+      properties:
+        limit:
+          type: integer
+          description: The page size that was applied.
+        nextCursor:
+          type: string
+          nullable: true
+          description: >-
+            Opaque base64url token; pass back verbatim as `?cursor=`. Null on
+            the last page. Clients must not parse it.
+        total:
+          type: integer
+          nullable: true
+          description: >-
+            Total matching items; null when counting is too expensive for the
+            query.
+
+    WalletCollectionGroup:
+      type: object
+      required: [collection, totalCount, nfts]
+      properties:
+        collection:
+          $ref: "#/components/schemas/Collection"
+        totalCount:
+          type: integer
+          description: Total NFTs this wallet holds in the collection.
+        nfts:
+          type: array
+          description: >-
+            First page of the wallet's NFTs in this collection; page through
+            `listCollectionNfts?owner=` for the rest.
+          items:
+            $ref: "#/components/schemas/NftSummary"
+
+    CollectionListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CollectionWithStats"
+
+    CollectionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/CollectionWithStats"
+
+    NftListResponse:
+      type: object
+      required: [data, pageInfo]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/NftSummary"
+        pageInfo:
+          $ref: "#/components/schemas/PageInfo"
+
+    FacetsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TraitFacet"
+
+    NftResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/NftDetail"
+
+    ActivityListResponse:
+      type: object
+      required: [data, pageInfo]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityEvent"
+        pageInfo:
+          $ref: "#/components/schemas/PageInfo"
+
+    OwnersListResponse:
+      type: object
+      required: [data, pageInfo]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OwnershipRecord"
+        pageInfo:
+          $ref: "#/components/schemas/PageInfo"
+
+    WalletNftsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WalletCollectionGroup"
+
+    ErrorResponse:
+      type: object
+      description: >-
+        Error envelope for every non-2xx JSON response. Extends the pre-v1
+        `{"error": string}` shape by upgrading the value to an object; the
+        top-level key is stable.
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: >-
+                Machine-readable code. Open set — clients must tolerate
+                unknown values. Well-known values: `bad_request`, `not_found`,
+                `rate_limited`, `internal`.
+            message:
+              type: string
+              description: Human-readable description; not for programmatic use.
