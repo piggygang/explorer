@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { PiggyMark } from "@/components/brand/wordmark";
+import { PiggyArt } from "@/components/piggy-art";
 import type { CollectionDisplay } from "@/lib/collections";
 
 export function CollectionCard({ collection }: { collection: CollectionDisplay }) {
@@ -12,11 +13,22 @@ export function CollectionCard({ collection }: { collection: CollectionDisplay }
       style={accent}
       className="group flex w-full flex-col overflow-hidden rounded-card border border-line bg-surface transition-colors hover:border-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
     >
-      {/* Collection art arrives with the NFT-media issue; until then the mark
-          on an accent wash keeps the card's proportions and hover behaviour. */}
-      <div className="flex aspect-square items-center justify-center bg-[var(--accent)]/10">
-        <PiggyMark className="h-16 w-16 transition-transform duration-300 group-hover:scale-105" />
-      </div>
+      {/* Decorative — the name below names the collection. The portraits are
+          background-free, so the accent wash carries the card's colour. */}
+      {collection.layers.length > 0 ? (
+        <div aria-hidden="true" className="bg-[var(--accent)]/10">
+          <PiggyArt
+            layers={collection.layers}
+            alt=""
+            eager
+            className="w-full transition-transform duration-300 group-hover:scale-105"
+          />
+        </div>
+      ) : (
+        <div className="flex aspect-square items-center justify-center bg-[var(--accent)]/10">
+          <PiggyMark className="h-16 w-16 transition-transform duration-300 group-hover:scale-105" />
+        </div>
+      )}
 
       <div className="flex flex-1 flex-col gap-1.5 border-t border-line p-4">
         <div className="flex items-baseline justify-between gap-3">

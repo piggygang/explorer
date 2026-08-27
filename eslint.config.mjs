@@ -5,6 +5,14 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    // The card portraits are a fixed-size 1:1 stack of same-origin PNGs
+    // (mirroring ../website's piggy-art.tsx) — next/image has nothing to
+    // optimise here; it would only add DOM and take away control of
+    // decoding and loading.
+    files: ["components/piggy-art.tsx"],
+    rules: { "@next/next/no-img-element": "off" },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
