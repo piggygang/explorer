@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { listCollections } from "@/lib/api/client";
-import { toDisplay } from "@/lib/collections";
+import { toDisplay, withComingSoon } from "@/lib/collections";
 
 export const metadata: Metadata = { title: "Search" };
 
@@ -10,7 +10,7 @@ export default async function SearchPage(props: PageProps<"/search">) {
   const searchParams = await props.searchParams;
   const raw = searchParams.q;
   const query = (Array.isArray(raw) ? raw[0] : raw)?.trim();
-  const collections = (await listCollections()).map(toDisplay);
+  const collections = withComingSoon((await listCollections()).map(toDisplay));
 
   return (
     <>

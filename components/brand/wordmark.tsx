@@ -25,7 +25,7 @@ export function Wordmark({ className }: { className?: string }) {
   return (
     <Link
       href="/"
-      className={`group inline-flex items-center gap-2.5 ${className ?? ""}`}
+      className={`group inline-flex shrink-0 items-center gap-2.5 ${className ?? ""}`}
       aria-label={`${SITE.name} — home`}
     >
       <PiggyMark className="h-8 w-8 transition-transform group-hover:-rotate-6" />

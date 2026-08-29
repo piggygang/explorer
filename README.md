@@ -1,6 +1,6 @@
 # piggygang-explorer
 
-Public explorer for the three Piggy collections — faceted attribute search,
+Public explorer for the Piggy collections — faceted attribute search,
 owner lookup and per-NFT transaction history. Next.js on Vercel, styled like
 [dressme](https://github.com/piggygang/dressme), powered entirely by the
 PiggyGang Indexer API. Target home: `explorer.piggygang.net`.

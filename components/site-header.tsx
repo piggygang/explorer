@@ -13,6 +13,24 @@ function CollectionPill({
   collection: CollectionNavItem;
   active: boolean;
 }) {
+  if (collection.status === "coming-soon") {
+    // Announced, not indexed: nothing to navigate to, so a plain span — static
+    // text in the nav landmark, not focusable, absent from link lists.
+    // `relative` contains the absolutely positioned sr-only marker: without a
+    // positioned ancestor inside the scroll row it would escape the row's
+    // overflow clipping and widen the page on narrow screens.
+    return (
+      <span
+        className={`${PILL} relative cursor-default border-dashed border-line text-ink-muted`}
+      >
+        {collection.name}{" "}
+        <span className="font-mono text-[11px]">
+          <span className="sr-only">Coming </span>soon
+        </span>
+      </span>
+    );
+  }
+
   return (
     <Link
       href={`/collections/${collection.slug}`}
@@ -31,7 +49,14 @@ function CollectionPill({
 
 function SearchBox() {
   return (
-    <form action="/search" role="search" className="w-full max-w-[13rem] sm:max-w-xs">
+    <form
+      action="/search"
+      role="search"
+      // flex-1 + min-w-0 (not w-full): a basis above max-w would freeze the box
+      // at its max and leave the pills to overlap it; this way it absorbs the
+      // shrink and the pills and wordmark stay whole.
+      className="min-w-0 flex-1 max-w-[13rem] sm:max-w-xs"
+    >
       <input
         type="search"
         name="q"
@@ -50,13 +75,15 @@ export function SiteHeader({
   collections: CollectionNavItem[];
   activeSlug?: string;
 }) {
+  // Four pills, the wordmark and a usable search box need the lg container;
+  // below it the pills move to the scroll row.
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-canvas/85 backdrop-blur">
       <div className="mx-auto w-full max-w-6xl px-5">
         <div className="flex items-center justify-between gap-4 py-3.5">
           <Wordmark />
           {collections.length > 0 && (
-            <nav aria-label="Collections" className="hidden items-center gap-2 md:flex">
+            <nav aria-label="Collections" className="hidden shrink-0 items-center gap-2 lg:flex">
               {collections.map((collection) => (
                 <CollectionPill
                   key={collection.slug}
@@ -71,7 +98,7 @@ export function SiteHeader({
         {collections.length > 0 && (
           <nav
             aria-label="Collections"
-            className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pb-3 md:hidden"
+            className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pb-3 lg:hidden"
           >
             {collections.map((collection) => (
               <CollectionPill

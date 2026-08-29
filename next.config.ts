@@ -6,8 +6,8 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // Trait layer filenames are content-stable — they change only when the
-        // art itself is re-imported. Next serves /public with max-age=0.
+        // Art filenames under /piggy are content-stable — a re-exported layer
+        // or cover gets a new name. Next serves /public with max-age=0.
         source: "/piggy/:path*",
         headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
       },

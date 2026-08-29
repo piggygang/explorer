@@ -32,7 +32,7 @@ Next.js 16.3.0 App Router project with TypeScript strict mode and React 19, clon
 - Routes live in `app/` at the repo root (no `src/`). `app/layout.tsx` loads Geist fonts via `next/font/google`; theme tokens live in `app/globals.css` (Tailwind v4 `@theme inline` — there is no tailwind.config). Path alias `@/*` maps to the repo root.
 - Layouts/pages use Next 16's generated route-typed props (`PageProps<"/collections/[slug]">`) as ambient globals; `pnpm exec next typegen` generates them without a full build.
 - Chrome (header/footer) is rendered by each page, not the root layout — `<body>` is a flex column whose children must stay the header, `main.flex-1` and footer. The header is a server component; pages pass it the collections nav and the active slug.
-- Hand-authored presentation (taglines, accent colors) lives in `lib/collections.ts`, mirroring dressme; the API deliberately carries no presentation.
+- Hand-authored presentation (taglines, accents, card art) and announced-but-not-indexed collections (rendered as inert "coming soon" cards and header pills, appended by `withComingSoon`) live in `lib/collections.ts` (taglines and art mirror `../website`, accents mirror dressme); tokens are hand-authored in `lib/tokens.ts`. The API deliberately carries no presentation.
 - Unlike dressme, sharp is **enabled** (`pnpm-workspace.yaml`), so `next/image` is usable once NFT media lands; add `images.remotePatterns` to `next.config.ts` at that point.
 
 ## API client & mock
