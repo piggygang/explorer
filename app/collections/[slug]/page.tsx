@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getCollection, listCollections } from "@/lib/api/client";
-import { toDisplay } from "@/lib/collections";
+import { toDisplay, withComingSoon } from "@/lib/collections";
 
 export const revalidate = 300;
 
@@ -32,7 +32,7 @@ export default async function CollectionPage(props: PageProps<"/collections/[slu
   const [all, collection] = await Promise.all([listCollections(), getCollection(slug)]);
   if (!collection) notFound();
 
-  const collections = all.map(toDisplay);
+  const collections = withComingSoon(all.map(toDisplay));
   const display = toDisplay(collection);
   const number = (value: number) => value.toLocaleString("en-US");
 

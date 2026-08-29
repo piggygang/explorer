@@ -6,10 +6,11 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
-    // The card portraits are a fixed-size 1:1 stack of same-origin PNGs
-    // (mirroring ../website's piggy-art.tsx) — next/image has nothing to
-    // optimise here; it would only add DOM and take away control of
-    // decoding and loading.
+    // The card portraits — trait-layer stacks and logo covers — are
+    // fixed-size 1:1 same-origin PNGs kept on the same plain-<img> contract
+    // as ../website's piggy-art.tsx: parity between the apps, and explicit
+    // control of decoding and loading. Moving the covers to next/image
+    // (sharp is enabled here, unlike website) is a separate decision.
     files: ["components/piggy-art.tsx"],
     rules: { "@next/next/no-img-element": "off" },
   },
