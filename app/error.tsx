@@ -5,7 +5,13 @@ import { SiteHeader } from "@/components/site-header";
 
 // An error page must never depend on the API — the chrome renders without nav,
 // same as not-found.tsx.
-export default function ErrorPage({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function ErrorPage({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
   return (
     <>
       <SiteHeader collections={[]} />
@@ -24,6 +30,11 @@ export default function ErrorPage({ reset }: { error: Error & { digest?: string 
           >
             Try again
           </button>
+          {/* Production replaces the message and strips custom properties, so
+              the digest is the only thing left worth quoting in a bug report. */}
+          {error.digest && (
+            <p className="mt-3 font-mono text-[11px] text-ink-muted">Reference {error.digest}</p>
+          )}
         </section>
       </main>
 

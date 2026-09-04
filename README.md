@@ -27,8 +27,15 @@ indexes) through the same generated API client the real backend will use.
 | `pnpm dev` / `build` / `start` / `lint` | The usual Next.js four |
 | `pnpm sync:spec` | Re-vendor `openapi/v1.yaml` from `../indexer` + regen types |
 | `pnpm gen:api` | Regenerate `lib/api/schema.d.ts` from the vendored spec |
-| `pnpm gen:fixtures` | Regenerate mock fixtures from `../dressme`'s data |
+| `pnpm gen:fixtures` | Regenerate mock fixtures from `../dressme`'s data, plus demo art |
 | `pnpm mock:prism` | Spec-faithful Prism mock of the contract on :4010 |
+
+`gen:fixtures` also writes `public/piggy/nft/` — 640px WebP art for the sampled
+mints, taken from `../assets` where the file has bytes and otherwise fetched
+from the metadata URI in the committed metaboss dumps. Both are optional: with
+neither available every fixture keeps `imageUrl: null`, which is what the API
+returns today. A handful are left null on purpose, and one points at a dead host,
+so the placeholder and the broken-link fallbacks are both visible in review.
 
 ## Configuration
 

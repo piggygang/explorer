@@ -4,9 +4,11 @@ import type { components } from "@/lib/api/schema";
  * Hand-authored presentation for the collections, keyed by API slug.
  * Accents, taglines and card art are deliberately not in the indexer API —
  * they are this site's styling. Taglines and card art mirror
- * ../website/lib/collections.ts; accents mirror dressme's lib/collections.ts
- * (website lightens the SOL purple to #a866ff for AA contrast on its text-sm
- * accent label — not yet reconciled here) so the apps stay visually consistent.
+ * ../website/lib/collections.ts; accents mirror dressme's lib/collections.ts,
+ * except the SOL purple, which takes website's lightened #a866ff — dressme's
+ * #9945ff measures 4.11:1 on --surface, under the 4.5:1 AA floor, and this app
+ * puts it on text-sm labels (the card CTA, the "N held" pill, the See all
+ * link) in several places at once.
  */
 
 export type Artwork =
@@ -17,6 +19,11 @@ export type Artwork =
 
 export type CollectionPresentation = {
   tagline: string;
+  /**
+   * Abbreviation for tallies too tight for the full name ("2 PSG · 2 PGG").
+   * Hand-authored because deriving it from the name would be a guess.
+   */
+  short: string;
   accent: string;
   /**
    * Card portrait (assets in public/piggy). A layer stack is a DressMe hero
@@ -31,16 +38,19 @@ export type CollectionPresentation = {
 const PRESENTATION = {
   "piggy-sol-gang": {
     tagline: "Ten thousand piggies, straight off the chain.",
-    accent: "#9945ff",
+    short: "PSG",
+    accent: "#a866ff",
     art: { kind: "image", src: "/piggy/covers/piggy-sol-gang.png" },
   },
   "piggy-girl-gang": {
     tagline: "Pretty, fierce and dressed for it.",
+    short: "PGG",
     accent: "#ff8ec4",
     art: { kind: "image", src: "/piggy/covers/piggy-girl-gang.png" },
   },
   "piggy-gang": {
     tagline: "Same ten thousand piggies. Meaner art.",
+    short: "Gang",
     accent: "#3ddad7",
     art: {
       kind: "layers",
@@ -58,6 +68,7 @@ const PRESENTATION = {
     // Coming-soon placeholder copy — rewrite the tagline the day the
     // collection goes live (see ANNOUNCED).
     tagline: "Something’s coming.",
+    short: "Mud",
     // Unused while inert; mud-toned for when the collection goes live.
     accent: "#d9a066",
     art: { kind: "image", src: "/piggy/covers/pig-mud.png" },
@@ -79,6 +90,7 @@ const ANNOUNCED: { slug: keyof typeof PRESENTATION; name: string }[] = [
     brand accent rather than an unstyled card. */
 const FALLBACK: CollectionPresentation = {
   tagline: "",
+  short: "",
   accent: "#ff5fa2",
   art: null,
 };
@@ -98,8 +110,17 @@ export type CollectionNavItem = {
   status: CollectionStatus;
 };
 
+/** Whether a slug is announced but not yet indexed, so a page the site's own
+    header links to resolves to real copy instead of a 404. ANNOUNCED itself
+    stays private — this is the only way in. */
+export function announced(slug: string): ComingSoonCollection | null {
+  const entry = ANNOUNCED.find((collection) => collection.slug === slug);
+  return entry ? { status: "coming-soon", ...entry, ...presentation(entry.slug) } : null;
+}
+
 type CollectionBase = CollectionNavItem & {
   tagline: string;
+  short: string;
   art: Artwork | null;
 };
 
@@ -108,6 +129,7 @@ export type LiveCollection = CollectionBase & {
   status: "live";
   supply: number;
   holders: number;
+  activity24h: number;
 };
 
 /** Announced, not indexed: presentation only, nothing to browse. */
@@ -118,16 +140,18 @@ export type CollectionDisplay = LiveCollection | ComingSoonCollection;
 export function toDisplay(
   collection: components["schemas"]["CollectionWithStats"],
 ): LiveCollection {
-  const { tagline, accent, art } = presentation(collection.slug);
+  const { tagline, short, accent, art } = presentation(collection.slug);
   return {
     status: "live",
     slug: collection.slug,
     name: collection.name,
     accent,
     tagline,
+    short,
     art,
     supply: collection.stats.supply,
     holders: collection.stats.holders,
+    activity24h: collection.stats.activity24h,
   };
 }
 

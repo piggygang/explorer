@@ -247,7 +247,11 @@ export function listWalletNfts(address: string): Response {
       {
         collection: bareCollection(collection),
         totalCount: held.length,
-        nfts: held.map(toSummary),
+        // The contract says each group carries the FIRST PAGE only; "see all"
+        // pages through listCollectionNfts?owner=. No fixture wallet holds more
+        // than a page, so this cap never bites today — it is here so the mock
+        // cannot drift from the contract when fixtures grow.
+        nfts: held.slice(0, 24).map(toSummary),
       },
     ];
   });
