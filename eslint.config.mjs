@@ -11,7 +11,7 @@ const eslintConfig = defineConfig([
     // as ../website's piggy-art.tsx: parity between the apps, and explicit
     // control of decoding and loading. Moving the covers to next/image
     // (sharp is enabled here, unlike website) is a separate decision.
-    files: ["components/piggy-art.tsx"],
+    files: ["components/piggy-art.tsx", "components/nft-image.tsx"],
     rules: { "@next/next/no-img-element": "off" },
   },
   // Override default ignores of eslint-config-next.

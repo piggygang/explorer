@@ -9,13 +9,34 @@
 // ids are recorded nowhere), so its fixture ids are sentinel-style base58 —
 // obviously synthetic, never plausible fakes.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DRESSME = path.resolve(HERE, "../../dressme");
 const OUT = path.resolve(HERE, "../lib/api/fixtures");
+
+// The sibling asset repo holds the real per-mint art. It is optional: without
+// it every fixture keeps imageUrl null, which is what the API returns today
+// anyway — the prototype just becomes much harder to review.
+const ASSETS = path.resolve(HERE, "../../assets");
+const ART_DIR = path.resolve(HERE, "../public/piggy/nft");
+const ART_URL = "/piggy/nft";
+const ART_SOURCE = {
+  "piggy-sol-gang": "piggy-sol-gang-images",
+  "piggy-girl-gang": "piggy-girl-gang-images",
+};
+// Most of piggy-sol-gang-images is 0-byte placeholders, but the committed
+// metaboss dumps carry each mint's metadata URI, and that re-host serves the
+// art. So: local bytes when they exist, the re-host when they do not.
+const ART_METADATA = {
+  "piggy-sol-gang": "piggy-sol-gang-metaboss-full",
+  "piggy-girl-gang": "piggy-girl-gang-metaboss-full",
+};
+// One fixture points at a host that will never answer, so the card's onError
+// fallback is visible in review rather than merely implemented.
+const DEAD_IMAGE_URL = "https://arweave.net/this-link-rotted-in-2021.png";
 
 // Mirrors dressme lib/collections.ts — the wire alphabet of look codes.
 const LOOK_ALPHABET =
@@ -162,6 +183,7 @@ for (const { slug, count, standard } of SAMPLE) {
       // their collection name.
       name: standard === "core" ? `#${id}` : `${DISPLAY_NAME[slug]} #${id}`,
       number: id,
+      // Filled in by the art pass below, once the mint ids are known.
       imageUrl: null,
       burned: false,
       standard,
@@ -173,6 +195,87 @@ for (const { slug, count, standard } of SAMPLE) {
     });
   }
 }
+
+// ------------------------------------------------------------------ art pass
+//
+// The contract says imageUrl is null on every NFT, and it will stay null until
+// media ingestion lands. That is honest but unreviewable: a browse grid of 24
+// identical brand marks tells nobody whether the design works.
+//
+// So the mock runs ahead of production ingestion here, exactly as it already
+// does for activity and ownership: the 40 token_metadata fixtures are real
+// mints whose art already exists in ../assets, so it is downsized into
+// public/piggy/nft/ and pointed at. The 6 Core fixtures have sentinel ids and
+// no art, so they keep imageUrl null and demonstrate that path for free, and
+// one real fixture is pointed at a dead host to exercise the onError fallback.
+
+/** Local bytes if there are any, else the metadata's own image URL. */
+async function artInput(nft) {
+  const dir = ART_SOURCE[nft.collectionSlug];
+  if (!dir) return null;
+
+  const local = path.join(ASSETS, dir, `${nft.id}.png`);
+  if (existsSync(local) && statSync(local).size > 0) return local;
+
+  const dump = path.join(ASSETS, ART_METADATA[nft.collectionSlug] ?? "", `${nft.id}.json`);
+  if (!existsSync(dump)) return null;
+  const { uri } = JSON.parse(readFileSync(dump, "utf8"));
+  if (!uri) return null;
+
+  try {
+    const metadata = await fetch(uri).then((response) => response.json());
+    if (!metadata.image) return null;
+    const image = await fetch(metadata.image);
+    if (!image.ok) return null;
+    return Buffer.from(await image.arrayBuffer());
+  } catch {
+    // A dead re-host is not a build failure — that NFT keeps imageUrl null,
+    // which is exactly what the API returns for it today.
+    return null;
+  }
+}
+
+async function writeArt() {
+  if (!existsSync(ASSETS)) {
+    console.warn(`! ${ASSETS} not found — every fixture keeps imageUrl null.`);
+    return 0;
+  }
+
+  let sharp;
+  try {
+    ({ default: sharp } = await import("sharp"));
+  } catch {
+    console.warn("! sharp is not installed — every fixture keeps imageUrl null.");
+    return 0;
+  }
+
+  // Rebuilt wholesale so a shrunk SAMPLE never leaves orphans behind.
+  rmSync(ART_DIR, { recursive: true, force: true });
+  mkdirSync(ART_DIR, { recursive: true });
+
+  let written = 0;
+  for (const nft of nfts) {
+    const input = await artInput(nft);
+    if (!input) continue;
+    // 640px covers the detail hero at 2x on a phone and a grid cell at 2x on a
+    // desktop; the sources are 1080px, more than any layout here asks for.
+    await sharp(input)
+      .resize(640, 640, { fit: "cover" })
+      .webp({ quality: 80 })
+      .toFile(path.join(ART_DIR, `${nft.id}.webp`));
+    nft.imageUrl = `${ART_URL}/${nft.id}.webp`;
+    written += 1;
+  }
+
+  // Deliberately break the last one: a 2021-era link that no longer resolves is
+  // the single most likely real-world state, and it must be visible in review.
+  const dead = [...nfts].reverse().find((nft) => nft.imageUrl !== null);
+  if (dead) dead.imageUrl = DEAD_IMAGE_URL;
+
+  return written;
+}
+
+const artCount = await writeArt();
 
 // Deterministic on-chain history. Every NFT gets its mint event; the first of
 // each collection also gets a transfer and a sale, and a two-owner history.
@@ -305,3 +408,5 @@ export const ACTIVITY = ${json(activity)} satisfies Record<string, components["s
 export const OWNERSHIP = ${json(ownership)} satisfies Record<string, components["schemas"]["OwnershipRecord"][]>;
 `,
 );
+
+console.log(`wrote %s demo art files to public/piggy/nft`, artCount);

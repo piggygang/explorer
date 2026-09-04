@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { Wordmark } from "@/components/brand/wordmark";
+import { NavSkeleton } from "@/components/skeleton";
 import type { CollectionNavItem } from "@/lib/collections";
 
 const PILL =
@@ -71,9 +72,17 @@ function SearchBox() {
 export function SiteHeader({
   collections,
   activeSlug,
+  pending = false,
 }: {
   collections: CollectionNavItem[];
   activeSlug?: string;
+  /**
+   * Chrome is rendered per page, not by the root layout, so a loading.tsx has
+   * to render this header itself — and with collections=[] both nav rows
+   * vanish, collapsing the mobile header by a whole pill row and making it jump
+   * when the real page swaps in. `pending` holds the geometry instead.
+   */
+  pending?: boolean;
 }) {
   // Four pills, the wordmark and a usable search box need the lg container;
   // below it the pills move to the scroll row.
@@ -82,31 +91,39 @@ export function SiteHeader({
       <div className="mx-auto w-full max-w-6xl px-5">
         <div className="flex items-center justify-between gap-4 py-3.5">
           <Wordmark />
-          {collections.length > 0 && (
+          {(pending || collections.length > 0) && (
             <nav aria-label="Collections" className="hidden shrink-0 items-center gap-2 lg:flex">
-              {collections.map((collection) => (
+              {pending ? (
+                <NavSkeleton />
+              ) : (
+                collections.map((collection) => (
+                  <CollectionPill
+                    key={collection.slug}
+                    collection={collection}
+                    active={collection.slug === activeSlug}
+                  />
+                ))
+              )}
+            </nav>
+          )}
+          <SearchBox />
+        </div>
+        {(pending || collections.length > 0) && (
+          <nav
+            aria-label="Collections"
+            className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pb-3 lg:hidden"
+          >
+            {pending ? (
+              <NavSkeleton />
+            ) : (
+              collections.map((collection) => (
                 <CollectionPill
                   key={collection.slug}
                   collection={collection}
                   active={collection.slug === activeSlug}
                 />
-              ))}
-            </nav>
-          )}
-          <SearchBox />
-        </div>
-        {collections.length > 0 && (
-          <nav
-            aria-label="Collections"
-            className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pb-3 lg:hidden"
-          >
-            {collections.map((collection) => (
-              <CollectionPill
-                key={collection.slug}
-                collection={collection}
-                active={collection.slug === activeSlug}
-              />
-            ))}
+              ))
+            )}
           </nav>
         )}
       </div>
