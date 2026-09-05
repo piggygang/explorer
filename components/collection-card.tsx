@@ -41,6 +41,16 @@ function Art({ collection }: { collection: CollectionDisplay }) {
 
 export function CollectionCard({ collection }: { collection: CollectionDisplay }) {
   const accent = { "--accent": collection.accent } as CSSProperties;
+  const stats: [string, number][] =
+    collection.status === "live"
+      ? (
+          [
+            ["Supply", collection.supply],
+            ["Holders", collection.holders],
+            ["24h events", collection.activity24h],
+          ] as const
+        ).flatMap(([label, value]) => (value === null ? [] : [[label, value] as [string, number]]))
+      : [];
 
   if (collection.status === "coming-soon") {
     // No page yet: inert on purpose — hover brightens the border only,
@@ -79,24 +89,22 @@ export function CollectionCard({ collection }: { collection: CollectionDisplay }
         </div>
         <p className="text-sm text-ink-muted">{collection.tagline}</p>
 
-        {/* A labelled band rather than a mono run in the title row — it is also
-            where stats.activity24h finally lands, which the API has been
-            returning and the card has been throwing away. "events", not sales:
-            there is no volume or price anywhere in the contract. */}
-        <dl className={STATS}>
-          <div>
-            <dt className={STAT_LABEL}>Supply</dt>
-            <dd className={STAT_VALUE}>{number(collection.supply)}</dd>
-          </div>
-          <div>
-            <dt className={STAT_LABEL}>Holders</dt>
-            <dd className={STAT_VALUE}>{number(collection.holders)}</dd>
-          </div>
-          <div>
-            <dt className={STAT_LABEL}>24h events</dt>
-            <dd className={STAT_VALUE}>{number(collection.activity24h)}</dd>
-          </div>
-        </dl>
+        {/* A labelled band rather than a mono run in the title row. "events",
+            not sales: there is no volume or price anywhere in the contract.
+
+            Collection.stats is nullable — short-TTL cached aggregates the
+            server may answer without — so the band disappears rather than
+            printing three zeroes, which would be a claim about the chain. */}
+        {stats.length > 0 && (
+          <dl className={STATS}>
+            {stats.map(([label, value]) => (
+              <div key={label}>
+                <dt className={STAT_LABEL}>{label}</dt>
+                <dd className={STAT_VALUE}>{number(value)}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
 
         <span className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--accent)]">
           Browse piggies

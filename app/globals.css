@@ -36,6 +36,49 @@ body {
   color: var(--ink);
 }
 
+/* The well an NFT image arrives into. A tinted blur rather than a flat block:
+   the contract carries no blurhash and no dominant colour, so a per-piggy
+   placeholder would be invented data — but the collection accent is this site's
+   own, and two soft radial washes over the raised surface read as a blur-up
+   while costing one paint of a static gradient.
+
+   position: relative because next/image's `fill` requires a positioned parent.
+   The color-mix percentage is a single value: `26% / 12%` is not color-mix
+   syntax and the whole declaration would be dropped, silently, with no CI gate
+   to catch it. */
+@utility art-well {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--surface-raised);
+  background-image:
+    radial-gradient(
+      60% 55% at 30% 25%,
+      color-mix(in oklab, var(--accent, var(--brand)) 26%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      70% 60% at 75% 80%,
+      color-mix(in oklab, var(--accent, var(--brand)) 13%, transparent),
+      transparent 72%
+    );
+}
+
+/* A control that only does something once its island is running.
+
+   Page one of the browse grid is server-rendered and complete, so a reader with
+   no JavaScript gets a whole grid — but the "Show more" button appends through
+   a Server Function and cannot work for them, and this repo does not ship dead
+   controls. CSS rather than a hydration flag: React's own answers to "am I
+   hydrated" either set state in an effect (which the React 19 lint rules
+   reject) or, in the case of useSyncExternalStore, do not settle on the client
+   snapshot here at all. A browser too old for the `scripting` media feature
+   just shows the button, which is the harmless direction to fail in. */
+@utility needs-js {
+  @media (scripting: none) {
+    display: none;
+  }
+}
+
 /* The header's collection pills scroll horizontally on small screens; hide
    the scrollbar without losing the scrolling itself. */
 @utility no-scrollbar {

@@ -1,16 +1,20 @@
-import Link from "next/link";
 import { ActivityBand, ActivityRow } from "@/components/activity-row";
 import { EmptyNote } from "@/components/empty-state";
 import { ErrorNote } from "@/components/error-note";
-import type { ActivityEvent, PageInfo } from "@/lib/api/client";
+import type { ActivitySummary, ActivityEvent } from "@/lib/api/client";
 import { formatSol, number } from "@/lib/format";
 
 /**
  * The event history, newest first.
  *
- * The summary strip is derived from the events on this page and says so: there
- * is no last-sale field, no floor and no volume anywhere in the contract, so
- * "total sales" counts sale events and "last sale" is the newest one seen.
+ * The summary strip reads NftDetail.activitySummary, which is lifetime and
+ * server-computed — it no longer has to caveat itself as "the events on this
+ * page". There is still no floor and no volume anywhere in the contract, so
+ * nothing here implies either.
+ *
+ * Paging the timeline is ALG-636's. The button that used to sit here linked to
+ * `?ac=<cursor>`, which this page has never read, so it is gone rather than
+ * carried forward as a control that does nothing.
  */
 
 const PANEL = "rounded-card border border-line bg-surface p-4";
@@ -18,10 +22,7 @@ const EYEBROW = "text-xs font-medium tracking-[0.14em] text-ink-muted uppercase"
 const SUMMARY = "mt-3 mb-4 flex flex-wrap gap-x-6 gap-y-2";
 const LABEL = "text-xs text-ink-muted";
 const VALUE = "font-mono text-sm";
-const MORE =
-  "mt-3 inline-flex rounded-full border border-line px-4 py-2 text-sm text-ink-muted transition-colors hover:border-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
-const END = "mt-3 text-center text-[11px] text-ink-muted";
-const NOTE = "mt-3 text-[11px] text-ink-muted";
+const NOTE = "mt-3 text-center text-[11px] text-ink-muted";
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -33,20 +34,16 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 export function ActivityTimeline({
-  id,
+  summary,
   events,
-  pageInfo,
-  owners,
+  hasMore,
   error,
 }: {
-  id: string;
+  summary: ActivitySummary;
   events: ActivityEvent[];
-  pageInfo: PageInfo | null;
-  owners: number | null;
+  hasMore: boolean;
   error?: unknown;
 }) {
-  const sales = events.filter((event) => event.type === "sale");
-  const lastSale = sales.find((event) => event.priceLamports !== null);
 
   return (
     <section id="activity" aria-label="Activity" className={`${PANEL} scroll-mt-32`}>
@@ -63,30 +60,31 @@ export function ActivityTimeline({
       ) : (
         <>
           <dl className={SUMMARY}>
-            <Stat label="Sales" value={number(sales.length)} />
+            <Stat label="Sales" value={number(summary.salesCount)} />
+            <Stat label="Transfers" value={number(summary.transferCount)} />
             <Stat
               label="Last sale"
-              value={lastSale ? formatSol(lastSale.priceLamports!) : "—"}
+              value={
+                summary.lastSalePriceLamports === null
+                  ? "—"
+                  : formatSol(summary.lastSalePriceLamports)
+              }
             />
-            <Stat label="Owners" value={owners === null ? "—" : number(owners)} />
+            <Stat label="Owners" value={number(summary.ownerCount)} />
           </dl>
 
           <ActivityBand>
             {events.map((event) => (
-              <ActivityRow key={event.signature} event={event} />
+              // One signature can carry two events for the same asset, which is
+              // exactly what seq disambiguates.
+              <ActivityRow key={`${event.signature}-${event.seq}`} event={event} />
             ))}
           </ActivityBand>
 
-          {pageInfo?.nextCursor ? (
-            <Link href={`/nfts/${id}?ac=${encodeURIComponent(pageInfo.nextCursor)}`} className={MORE}>
-              Load older events
-            </Link>
-          ) : (
-            <p className={END}>That’s the whole history.</p>
-          )}
-
           <p className={NOTE}>
-            Counts cover the events loaded here — the contract carries no lifetime sale total.
+            {hasMore
+              ? "Showing the most recent events."
+              : "That\u2019s the whole history."}
           </p>
         </>
       )}

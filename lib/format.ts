@@ -21,8 +21,6 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["minute", 60],
 ];
 
-const LAMPORTS_PER_SOL = 1_000_000_000;
-
 /** The house number rule. */
 export function number(value: number): string {
   return value.toLocaleString("en-US");
@@ -56,11 +54,26 @@ export function absoluteTime(iso: string): string {
 }
 
 /**
- * Lamports to SOL. Precision widens rather than rounding a real trade down to
- * "0 SOL" — a sale of 42,000 lamports is a fact, not a zero.
+ * Lamports to SOL, from the decimal string the contract carries.
+ *
+ * A string, not a number, because the contract says so: "the full u64 range
+ * round-trips exactly and nobody divides by 1e9 in floating point". So this
+ * does neither — it pads to ten digits and cuts, which is exact for every value
+ * a u64 can hold. BigInt would work too, but tsconfig targets ES2017 and a
+ * BigInt literal is a compile error there.
+ *
+ * Precision widens rather than rounding a real trade down to "0 SOL" — a sale
+ * of 42,000 lamports is a fact, not a zero.
  */
-export function formatSol(lamports: number): string {
-  const sol = lamports / LAMPORTS_PER_SOL;
-  const digits = sol !== 0 && Math.abs(sol) < 0.001 ? 6 : 3;
-  return `${sol.toLocaleString("en-US", { maximumFractionDigits: digits })} SOL`;
+export function formatSol(lamports: string): string {
+  const digits = lamports.replace(/^0+(?=\d)/, "").padStart(10, "0");
+  const whole = digits.slice(0, -9);
+  const fraction = digits.slice(-9).replace(/0+$/, "");
+  if (fraction === "") return `${Number(whole).toLocaleString("en-US")} SOL`;
+  // Three decimals normally. For dust, three significant ones instead, so a
+  // 999-lamport sale reads 0.000000999 SOL rather than "0 SOL".
+  const firstDigit = digits.slice(-9).search(/[1-9]/);
+  const places = whole === "0" ? Math.min(9, firstDigit + 3) : 3;
+  const shown = fraction.slice(0, places).replace(/0+$/, "");
+  return `${Number(whole).toLocaleString("en-US")}${shown ? `.${shown}` : ""} SOL`;
 }

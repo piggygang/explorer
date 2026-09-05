@@ -67,8 +67,10 @@ export function BrowseToolbar({
 
           <SortPills slug={slug} params={params} />
 
-          {/* total is nullable by contract, so this never reads "of N" unless
-              the server actually counted. */}
+          {/* Keyset pages carry no count of their own, so the filtered total
+              comes from the facets response — which already pays for the scan.
+              When that call failed there is no honest number to print, so this
+              says what it knows: how many are on the page behind it. */}
           <p aria-live="polite" className={COUNT}>
             {total === null ? `${number(shown)} shown` : `${number(total)} piggies`}
           </p>

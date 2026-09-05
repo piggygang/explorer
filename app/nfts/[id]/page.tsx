@@ -18,9 +18,9 @@ import { SiteHeader } from "@/components/site-header";
 import {
   getCollectionFacets,
   getNft,
+  getNftActivity,
+  getNftOwners,
   listCollections,
-  listNftActivity,
-  listNftOwners,
 } from "@/lib/api/client";
 import type { NftDetail } from "@/lib/api/client";
 import { presentation, toDisplay, withComingSoon } from "@/lib/collections";
@@ -60,20 +60,21 @@ async function Traits({ nft }: { nft: NftDetail }) {
   }));
 
   if ("error" in facets) return <ErrorNote what="trait rarity" error={facets.error} />;
-  return <TraitChips attributes={nft.attributes} facets={facets} />;
+  return <TraitChips attributes={nft.attributes} facets={facets.facets} />;
 }
 
-/** The event list streams; ownership is already resolved by the page. */
-async function Timeline({ id, owners }: { id: string; owners: number | null }) {
-  const activity = await listNftActivity(id, { limit: 24 }).catch((error: unknown) => ({ error }));
+/** The event list streams; the lifetime summary rides on the detail response. */
+async function Timeline({ nft }: { nft: NftDetail }) {
+  const activity = await getNftActivity(nft.address, { limit: 24 }).catch((error: unknown) => ({
+    error,
+  }));
   const failed = "error" in activity;
 
   return (
     <ActivityTimeline
-      id={id}
-      events={failed ? [] : activity.events}
-      pageInfo={failed ? null : activity.pageInfo}
-      owners={owners}
+      summary={nft.activitySummary}
+      events={failed ? [] : activity.data}
+      hasMore={failed ? false : activity.hasMore}
       error={failed ? activity.error : undefined}
     />
   );
@@ -84,18 +85,17 @@ export default async function NftPage(props: PageProps<"/nfts/[id]">) {
 
   // Blocking on purpose: once a Suspense fallback streams, headers are sent and
   // notFound() can no longer set a 404.
-  // Owners rides along in the blocking wave: it is one cheap call, and both the
-  // owner card's "held since" and the section-nav count need it before paint.
+  // Ownership rides along in the blocking wave: it is one cheap call and the
+  // history panel below it is not worth its own boundary.
   const [nft, all, owners] = await Promise.all([
     getNft(id),
     listCollections(),
-    listNftOwners(id, { limit: 24 }).catch((error: unknown) => ({ error })),
+    getNftOwners(id, { limit: 24 }).catch((error: unknown) => ({ error })),
   ]);
   if (!nft) notFound();
 
   const ownersFailed = "error" in owners;
-  const records = ownersFailed ? [] : owners.records;
-  const ownerCount = ownersFailed ? null : (owners.pageInfo.total ?? owners.records.length);
+  const intervals = ownersFailed ? [] : owners.data;
 
   const collections = withComingSoon(all.map(toDisplay));
   const accent = { "--accent": presentation(nft.collection.slug).accent } as CSSProperties;
@@ -129,13 +129,22 @@ export default async function NftPage(props: PageProps<"/nfts/[id]">) {
           <div className={SPLIT}>
             <div className={RAIL}>
               <NftArt nft={nft} />
-              <OwnerPanel nft={nft} records={records} />
+              <OwnerPanel nft={nft} />
               <AssetPanel nft={nft} />
               <ActionLinks nft={nft} />
             </div>
 
             <div className={CONTENT}>
-              <SectionNav traits={nft.attributes.length} events={null} owners={ownerCount} />
+              {/* Counts come from activitySummary, which is lifetime and
+                  server-computed, rather than from the page of events actually
+                  loaded. transferCount + salesCount is not a total event count —
+                  mints and burns are outside both — so Activity stays uncounted
+                  rather than carrying a number that is quietly short. */}
+              <SectionNav
+                traits={nft.attributes.length}
+                events={null}
+                owners={nft.activitySummary.ownerCount}
+              />
 
               <section id="traits" aria-label="Traits" className={`${PANEL} scroll-mt-32`}>
                 <h2 className={`${EYEBROW} mb-3`}>Traits</h2>
@@ -157,11 +166,11 @@ export default async function NftPage(props: PageProps<"/nfts/[id]">) {
                   </div>
                 }
               >
-                <Timeline id={id} owners={ownerCount} />
+                <Timeline nft={nft} />
               </Suspense>
 
               <OwnershipHistory
-                records={records}
+                intervals={intervals}
                 error={ownersFailed ? owners.error : undefined}
               />
             </div>

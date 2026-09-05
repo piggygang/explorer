@@ -6,8 +6,8 @@ import { LoadingStatus, WalletGroupsSkeleton } from "@/components/skeleton";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { WalletPortfolio } from "@/components/wallet-portfolio";
-import { listCollections, listWalletNfts } from "@/lib/api/client";
-import type { CollectionWithStats } from "@/lib/api/client";
+import { getWalletPortfolio, listCollections } from "@/lib/api/client";
+import type { Collection } from "@/lib/api/client";
 import { shorten } from "@/lib/format";
 import { toDisplay, withComingSoon } from "@/lib/collections";
 
@@ -33,10 +33,10 @@ async function Portfolio({
   collections,
 }: {
   address: string;
-  collections: Promise<CollectionWithStats[]>;
+  collections: Promise<Collection[]>;
 }) {
-  const [groups, all] = await Promise.all([listWalletNfts(address), collections]);
-  return <WalletPortfolio address={address} groups={groups} collections={all} />;
+  const [portfolio, all] = await Promise.all([getWalletPortfolio(address), collections]);
+  return <WalletPortfolio portfolio={portfolio} collections={all} />;
 }
 
 export default async function WalletPage(props: PageProps<"/wallet/[address]">) {
