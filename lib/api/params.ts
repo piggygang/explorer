@@ -30,6 +30,57 @@ export const DEFAULT_SORT = "number" satisfies Sort;
  */
 export const BROWSE_LIMIT = 24;
 
+/**
+ * The contract's own limits on a trait filter, quoted from TraitFilter's prose
+ * and its schema: "At most 16 distinct trait types and 64 values per request",
+ * `maxItems: 64` per type, and a value of 1 to 128 characters.
+ *
+ * They live here so the href builders and the mock enforce one set of numbers.
+ * Until now they existed only in lib/api/actions.ts — the load-more path — so
+ * the UI could build a URL the real API would reject.
+ */
+export const MAX_TRAIT_TYPES = 16;
+export const MAX_TRAIT_VALUES = 64;
+export const MAX_TRAIT_VALUE_LENGTH = 128;
+
+/** The contract's `q`: minLength 1, maxLength 64. */
+export const MAX_QUERY_LENGTH = 64;
+
+/** How many values a selection holds in total, across every trait type. */
+export function traitValueCount(trait: TraitSelection): number {
+  return Object.values(trait).reduce((total, values) => total + values.length, 0);
+}
+
+/**
+ * Whether a selection is inside the contract's caps. Checked before a URL is
+ * built rather than after the API rejects it, because a filter the reader can
+ * click but not use is worse than one that is not offered.
+ */
+export function traitsWithinCaps(trait: TraitSelection): boolean {
+  return (
+    Object.keys(trait).length <= MAX_TRAIT_TYPES &&
+    traitValueCount(trait) <= MAX_TRAIT_VALUES &&
+    Object.values(trait).every(
+      (values) =>
+        values.length <= MAX_TRAIT_VALUES &&
+        values.every((value) => value.length >= 1 && value.length <= MAX_TRAIT_VALUE_LENGTH),
+    )
+  );
+}
+
+/**
+ * Whether one more value can be added to a selection. Adding a value to a type
+ * already present does not spend a type, so the two caps are checked against
+ * what the result would actually be.
+ */
+export function canAddTraitValue(trait: TraitSelection, traitType: string): boolean {
+  const newType = trait[traitType] === undefined ? 1 : 0;
+  return (
+    Object.keys(trait).length + newType <= MAX_TRAIT_TYPES &&
+    traitValueCount(trait) + 1 <= MAX_TRAIT_VALUES
+  );
+}
+
 type SortAxis = {
   readonly label: string;
   readonly asc: Sort;

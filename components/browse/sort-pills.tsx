@@ -4,6 +4,10 @@ import type { Sort } from "@/lib/api/params";
 import { type BrowseParams, sortHref } from "@/lib/browse-params";
 
 /**
+ * Sort keeps Next's default scroll behaviour, unlike every filter control on
+ * this page: a preserved offset over a reordered, remounted grid would show the
+ * reader a different part of a different list.
+ *
  * Link pills, not a <select>: an onChange-navigates select is a known a11y
  * anti-pattern and has no precedent in either repo. Sorting works with zero
  * client JS and each option is one tab stop.
@@ -34,7 +38,10 @@ export function SortPills({ slug, params }: { slug: string; params: BrowseParams
     <div
       role="group"
       aria-label="Sort"
-      className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 sm:mx-0 sm:flex-wrap sm:px-0"
+      // No wrapping at lg: the filter rail's sticky offset is derived from this
+      // bar being one row, and a wrapped pill row would push it down under the
+      // rail with no z-index left to fix the overlap. See lib/browse-layout.ts.
+      className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 sm:mx-0 sm:flex-wrap sm:px-0 lg:flex-nowrap"
     >
       {SORT_AXES.filter((axis) => axis.available).map(({ label, asc, desc }) => {
         const active = current === asc || (desc !== undefined && current === desc);

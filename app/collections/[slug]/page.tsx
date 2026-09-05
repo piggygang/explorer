@@ -7,8 +7,7 @@ import { BrowseResults } from "@/components/browse/browse-results";
 import { CollectionArt } from "@/components/collection-art";
 import { PiggyMark } from "@/components/brand/wordmark";
 import { EmptyState } from "@/components/empty-state";
-import { LoadingStatus, NftGridSkeleton } from "@/components/skeleton";
-import { NFT_GRID } from "@/components/nft-card";
+import { BrowseSkeleton } from "@/components/browse/browse-skeleton";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getCollection, listCollections } from "@/lib/api/client";
@@ -130,14 +129,7 @@ export default async function CollectionPage(props: PageProps<"/collections/[slu
 
         {collection ? (
           <div style={accent}>
-            <Suspense
-              fallback={
-                <div className="mx-auto w-full max-w-6xl px-5 pt-6">
-                  <LoadingStatus>Loading piggies…</LoadingStatus>
-                  <NftGridSkeleton className={NFT_GRID} />
-                </div>
-              }
-            >
+            <Suspense fallback={<BrowseSkeleton />}>
               <BrowseResults slug={slug} params={params} />
             </Suspense>
           </div>

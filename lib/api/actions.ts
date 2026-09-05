@@ -2,7 +2,7 @@
 
 import { ApiError, browseCollectionNfts } from "@/lib/api/client";
 import type { NftSummary } from "@/lib/api/client";
-import { BROWSE_LIMIT, isBrowseSort } from "@/lib/api/params";
+import { BROWSE_LIMIT, MAX_QUERY_LENGTH, isBrowseSort, traitsWithinCaps } from "@/lib/api/params";
 import type { TraitSelection } from "@/lib/api/params";
 
 /**
@@ -31,8 +31,6 @@ export type MorePage =
   | { ok: false; reason: "expired" | "failed" };
 
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-const MAX_TRAIT_TYPES = 16;
-const MAX_TRAIT_VALUES = 64;
 
 export async function loadMoreCollectionNfts(input: {
   slug: string;
@@ -44,12 +42,11 @@ export async function loadMoreCollectionNfts(input: {
   if (!SLUG.test(input.slug) || input.slug.length > 64) return { ok: false, reason: "failed" };
 
   const sort = input.sort !== undefined && isBrowseSort(input.sort) ? input.sort : undefined;
-  // The contract's own caps. Sending more would be a 4xx from the real API, so
-  // it is not worth a round trip.
+  // The contract's own caps, from the one place that states them. Sending more
+  // would be a 4xx from the real API, so it is not worth a round trip.
   const trait = input.trait ?? {};
-  const types = Object.keys(trait);
-  const values = Object.values(trait).reduce((total, list) => total + list.length, 0);
-  if (types.length > MAX_TRAIT_TYPES || values > MAX_TRAIT_VALUES) {
+  if (!traitsWithinCaps(trait)) return { ok: false, reason: "failed" };
+  if (input.q !== undefined && input.q.length > MAX_QUERY_LENGTH) {
     return { ok: false, reason: "failed" };
   }
 

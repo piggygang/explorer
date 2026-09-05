@@ -3,28 +3,32 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
+import { RAIL_MEDIA_QUERY } from "@/lib/browse-layout";
 
 /**
- * The page's only new client component, and it is a shell: a native <dialog>
- * whose open state is driven entirely by the URL.
+ * The mobile filter drawer: a native <dialog> whose open state is driven
+ * entirely by the URL.
  *
  * A native dialog for the reason dressme's wallet modal gives — it renders in
  * the top layer, so the codebase never gains a second z-index, and it brings
  * focus trapping, Escape and ::backdrop with it.
  *
- * The URL is the single source of truth. Opening is a navigation (the trigger
- * is a Link to ?filters=<Type>), so closing has to be one too: Escape and a
- * click outside both cancel the browser's own close and perform the same
- * navigation the ✕ link does, and the dialog then closes because the next
- * render says it is closed. Letting the browser close it directly would leave
- * the URL claiming the sheet is open, so a reload would reopen it.
+ * The URL is the single source of truth. Opening is a navigation (the trigger is
+ * a Link to ?filters=open), so closing has to be one too: Escape and a click
+ * outside both cancel the browser's own close and perform the same navigation
+ * the ✕ does. Letting the browser close it directly would leave the URL claiming
+ * the drawer is open, so a reload would reopen it.
  *
  * It receives an already-server-rendered panel as `children`, so no facet logic
- * and no facet data cross the boundary: a real 10,000-piggy collection carries
- * several hundred trait values, and none of them belong in the RSC payload.
+ * crosses the boundary here.
  *
- * Never lg:hidden — that would leave an open modal display:none in the top layer
- * with the document inert and no visible way out if the viewport crossed 1024px.
+ * NEVER lg:hidden. Hiding an OPEN dialog by media query would leave it
+ * display:none in the top layer with the document inert and no visible way out
+ * if the viewport crossed 1024px. Now that a rail exists above that width, the
+ * answer is not a CSS rule but a refusal: this asks matchMedia whether it is
+ * allowed to open at all, and navigates the flag away if the viewport grows
+ * while it is open. Purely imperative — no state, so React 19's
+ * set-state-in-effect rule has nothing to object to.
  */
 export function FilterSheet({
   open,
@@ -44,13 +48,31 @@ export function FilterSheet({
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-    // A navigation does not restore focus to the trigger on its own, and the
-    // trigger is where the reader was before the sheet took over.
-    if (wasOpen.current && !open) document.getElementById(triggerId)?.focus();
-    wasOpen.current = open;
-  }, [open, triggerId]);
+    const rail = window.matchMedia(RAIL_MEDIA_QUERY);
+
+    const sync = () => {
+      // At rail widths the panel is already on the page; a modal over it would
+      // be a second copy of the same controls.
+      const shouldShow = open && !rail.matches;
+      if (shouldShow && !dialog.open) dialog.showModal();
+      if (!shouldShow && dialog.open) dialog.close();
+
+      // Drop the flag rather than leaving a URL that claims a drawer nobody can
+      // see. This runs on a cold desktop load too: build() writes `filters=open`
+      // into every href from a params object that still carries it, so one
+      // bookmarked link would otherwise infect every URL the session shares.
+      if (open && rail.matches) router.replace(closeHref, { scroll: false });
+
+      // A navigation does not restore focus to the trigger on its own, and the
+      // trigger is where the reader was before the drawer took over.
+      if (wasOpen.current && !shouldShow) document.getElementById(triggerId)?.focus();
+      wasOpen.current = shouldShow;
+    };
+
+    sync();
+    rail.addEventListener("change", sync);
+    return () => rail.removeEventListener("change", sync);
+  }, [open, closeHref, router, triggerId]);
 
   const close = () => router.replace(closeHref, { scroll: false });
 

@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { NFT_GRID, NftCard } from "@/components/nft-card";
+import { NftCard } from "@/components/nft-card";
+import { BROWSE_GRID } from "@/lib/browse-layout";
 import { loadMoreCollectionNfts } from "@/lib/api/actions";
 import type { NftSummary } from "@/lib/api/client";
 import type { TraitSelection } from "@/lib/api/params";
@@ -27,7 +28,9 @@ import { number } from "@/lib/format";
  */
 
 const SENTINEL = "h-px w-full";
-const PAGER = "mx-auto w-full max-w-6xl px-5 pt-6 pb-16 text-center";
+// No max-width container of its own any more: BrowseResults owns the layout,
+// because beside the filter rail the grid is one column of a two-column row.
+const PAGER = "pt-6 text-center";
 const GHOST =
   "rounded-full border border-line px-6 py-3 text-sm text-ink-muted transition-colors hover:border-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-default disabled:opacity-60";
 const NOTE = "mt-2 text-[11px] text-ink-muted";
@@ -158,8 +161,8 @@ export function BrowseGrid({
 
   return (
     <>
-      <div className="mx-auto w-full max-w-6xl px-5 pt-6">
-        <ul className={NFT_GRID}>
+      <div>
+        <ul className={BROWSE_GRID}>
           {children}
           {appended.map((nft) => (
             <li key={nft.address} className="flex">
