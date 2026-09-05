@@ -7,18 +7,31 @@ import type { NftDetail } from "@/lib/api/client";
  * who came to look at a piggy deserves to be told why there is nothing to see.
  */
 
-const WELL = "relative aspect-square overflow-hidden rounded-card border border-line bg-surface-raised";
+const WELL = "art-well aspect-square rounded-card border border-line";
 const CAPTION = "mt-2 text-[11px] text-ink-muted";
 
 export function NftArt({ nft }: { nft: NftDetail }) {
   return (
     <div>
       <div className={`${WELL} ${nft.burned ? "opacity-25" : ""}`}>
-        <NftImage src={nft.imageUrl} alt={nft.name} eager />
+        <NftImage
+          src={nft.imageUri}
+          status={nft.imageStatus}
+          alt={nft.name}
+          eager
+          sizes="(min-width: 1024px) 380px, 100vw"
+        />
       </div>
-      {nft.imageUrl === null && (
-        <p className={CAPTION}>Piggy art appears once the indexer records image URLs.</p>
-      )}
+      {/* Two different absences, and the visitor is owed the difference: one is
+          waiting on the indexer, the other is a 2021 host that is never coming
+          back. Neither is a broken image icon. */}
+      {nft.imageUri === null ? (
+        <p className={CAPTION}>Piggy art appears once the indexer records an image URL.</p>
+      ) : nft.imageStatus === "dead" ? (
+        <p className={CAPTION}>
+          The host this piggy&rsquo;s art was published to no longer answers.
+        </p>
+      ) : null}
     </div>
   );
 }

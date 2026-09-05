@@ -7,7 +7,7 @@ import { PiggyMark } from "@/components/brand/wordmark";
 import { TokenCard } from "@/components/token-card";
 import { listCollections } from "@/lib/api/client";
 import { number } from "@/lib/format";
-import { recentMoves } from "@/lib/recent-moves";
+import { recentActivity } from "@/lib/recent-activity";
 import { type LiveCollection, toDisplay, withComingSoon } from "@/lib/collections";
 import { TOKENS } from "@/lib/tokens";
 
@@ -23,7 +23,7 @@ const NOTE = "rounded-card border border-dashed border-line bg-surface/50 p-6 te
 export const revalidate = 300;
 
 async function Activity({ collections }: { collections: LiveCollection[] }) {
-  const { moves, failed } = await recentMoves(collections);
+  const { events, failed } = await recentActivity(collections.map((one) => one.slug));
 
   if (failed) {
     return (
@@ -32,10 +32,10 @@ async function Activity({ collections }: { collections: LiveCollection[] }) {
       </p>
     );
   }
-  if (moves.length === 0) {
+  if (events.length === 0) {
     return <p className={NOTE}>No moves yet — nothing has been indexed for these collections.</p>;
   }
-  return <ActivityStrip moves={moves} />;
+  return <ActivityStrip events={events} />;
 }
 
 export default async function Home() {
@@ -44,7 +44,12 @@ export default async function Home() {
   // Supply sums legitimately. Holders NEVER do — stats.holders is distinct
   // owners PER collection, so adding them would count a wallet that holds all
   // three three times, and there is no cross-collection aggregate to ask for.
-  const supply = live.reduce((total, collection) => total + collection.supply, 0);
+  //
+  // A collection whose stats have not been computed contributes nothing rather
+  // than a zero, and the line disappears entirely if none of them have — a
+  // headline count that silently omits a collection is worse than no headline.
+  const counted = live.filter((collection) => collection.supply !== null);
+  const supply = counted.reduce((total, collection) => total + (collection.supply ?? 0), 0);
 
   return (
     <>
@@ -56,14 +61,17 @@ export default async function Home() {
           <h1 className="mt-5 text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
             Explore the Piggy Gang collections
           </h1>
-          {/* No "rarity" here: NftAttribute is {traitType, value} and rarity
-              scoring is unstarted. The word comes back as "trait rarity" the day
-              it is derivable — never as a rank. */}
+          {/* No "rarity" here. The contract reserves Attribute.rarityPct,
+              rarityRank and rarityScore but returns null for all three until
+              rarity scoring ships (ALG-627), so the only rarity this site can
+              state is a trait's share of the facet counts — which is what the
+              detail page says, in those words. The headline gets the claim the
+              day the numbers are real. */}
           <p className="mx-auto mt-4 max-w-md text-base text-ink-muted text-pretty sm:text-lg">
             Traits, owners and the full on-chain history of every piggy, across every
             collection.
           </p>
-          {live.length > 0 && (
+          {counted.length > 0 && counted.length === live.length && (
             <p className="mt-6 font-mono text-xs text-ink-muted">
               {number(supply)} piggies indexed across {live.length}{" "}
               {live.length === 1 ? "collection" : "collections"}
@@ -87,10 +95,11 @@ export default async function Home() {
 
         <section id="activity" className={SECTION}>
           <h2 className={`${EYEBROW} mb-1`}>Activity</h2>
-          {/* Says exactly what the data is. There is no collection-level feed in
-              the contract, so this never claims to be one. */}
+          {/* Says exactly what the data is. There is still no GLOBAL feed, so
+              this is the newest events of each collection merged, not a true
+              cross-collection ranking — and it says so rather than implying one. */}
           <p className="mb-4 text-[11px] text-ink-muted">
-            One row per piggy — the latest on-chain event the indexer has for it.
+            The newest on-chain events from each collection, most recent first.
           </p>
           <Suspense fallback={<p className={NOTE}>Reading the latest moves…</p>}>
             <Activity collections={live} />

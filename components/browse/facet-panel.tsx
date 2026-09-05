@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { RarityBadge } from "@/components/rarity-badge";
-import type { TraitFacet } from "@/lib/api/client";
+import type { Facet } from "@/lib/api/client";
 import { FACET_EXCLUDED_DISCLAIMER } from "@/lib/rarity";
 import { facetTotal, traitShare } from "@/lib/rarity";
 import { number } from "@/lib/format";
@@ -55,7 +55,7 @@ export function FacetPanel({
 }: {
   slug: string;
   params: BrowseParams;
-  facets: TraitFacet[] | null;
+  facets: Facet[] | null;
   total: number | null;
 }) {
   const closeTo = closeSheetHref(slug, params);

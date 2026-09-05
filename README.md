@@ -30,20 +30,32 @@ indexes) through the same generated API client the real backend will use.
 | `pnpm gen:fixtures` | Regenerate mock fixtures from `../dressme`'s data, plus demo art |
 | `pnpm mock:prism` | Spec-faithful Prism mock of the contract on :4010 |
 
-`gen:fixtures` also writes `public/piggy/nft/` — 640px WebP art for the sampled
-mints, taken from `../assets` where the file has bytes and otherwise fetched
-from the metadata URI in the committed metaboss dumps. Both are optional: with
-neither available every fixture keeps `imageUrl: null`, which is what the API
-returns today. A handful are left null on purpose, and one points at a dead host,
-so the placeholder and the broken-link fallbacks are both visible in review.
+`gen:fixtures` resolves each sampled mint's `imageUri` from the committed
+metaboss dumps in `../assets` — the on-chain metadata URI, then the re-hosted
+one where the original host is gone — and records the URL. No art is downloaded
+and none is committed: the mock points at the same media the real API will.
+`../assets` is optional; without it every fixture keeps `imageUri: null`, which
+is what the API returns for an un-ingested asset. A handful are left null on
+purpose, one is left unchecked and one points at a dead host, so the
+placeholder, the optimistic and the known-dead paths are all visible in review.
+
+Fixture stats describe the fixture set, not the real collections — a card reads
+"Supply 120", not "Supply 10,000". That is deliberate: the contract makes
+`CollectionStats.indexed` the unfiltered browse count and `FacetsResponse.total`
+the filtered one, so a headline that disagreed with the grid would make the
+toolbar lie. `rarityRank` and `rarityScore` are synthetic for the same reason —
+the browse card's rank badge has to be reviewable before ALG-627 ships — while
+`sort=rarity` still answers `422 unsupported_sort` exactly as production does.
 
 ## Configuration
 
 One variable, server-only (see `.env.example`):
 
-- `API_BASE_URL` — base URL of the real indexer API **including `/v1`**, no
-  trailing slash. Unset = mock mode. Pages fetch in Server Components, so the
-  value never reaches the browser and the API needs no CORS.
+- `API_BASE_URL` — the origin of the real indexer API, **without `/v1`** and
+  without a trailing slash. The version prefix is part of the request path in
+  the frozen contract, so it must not be in this value. Unset = mock mode. Pages
+  fetch in Server Components, so the value never reaches the browser and the API
+  needs no CORS.
 
 To prove the env switch locally against a spec-faithful server:
 
@@ -51,6 +63,12 @@ To prove the env switch locally against a spec-faithful server:
 pnpm mock:prism                                  # Prism on :4010
 API_BASE_URL=http://localhost:4010 pnpm dev      # same pages, different backend
 ```
+
+Prism replays the contract's own examples, so it answers every endpoint —
+including `/v1/collections/{slug}/holders` and `/v1/search`, which the in-app
+mock deliberately 404s because nothing calls them yet (ALG-638, ALG-634). It
+also ignores `trait`, `sort` and `cursor`, so it proves contract fidelity and
+the environment switch, not browsing.
 
 The in-app mock is also reachable over HTTP at `/api/mock/v1/*`
 (e.g. `curl localhost:3000/api/mock/v1/collections`).

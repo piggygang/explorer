@@ -124,12 +124,18 @@ type CollectionBase = CollectionNavItem & {
   art: Artwork | null;
 };
 
-/** API data merged with presentation — what cards and pages render. */
+/**
+ * API data merged with presentation — what cards and pages render.
+ *
+ * The stats are nullable because Collection.stats is: they are short-TTL cached
+ * aggregates, and the contract lets the server answer without them. A card
+ * omits a null stat rather than printing 0, which would be a claim.
+ */
 export type LiveCollection = CollectionBase & {
   status: "live";
-  supply: number;
-  holders: number;
-  activity24h: number;
+  supply: number | null;
+  holders: number | null;
+  activity24h: number | null;
 };
 
 /** Announced, not indexed: presentation only, nothing to browse. */
@@ -138,7 +144,7 @@ export type ComingSoonCollection = CollectionBase & { status: "coming-soon" };
 export type CollectionDisplay = LiveCollection | ComingSoonCollection;
 
 export function toDisplay(
-  collection: components["schemas"]["CollectionWithStats"],
+  collection: components["schemas"]["Collection"],
 ): LiveCollection {
   const { tagline, short, accent, art } = presentation(collection.slug);
   return {
@@ -149,9 +155,9 @@ export function toDisplay(
     tagline,
     short,
     art,
-    supply: collection.stats.supply,
-    holders: collection.stats.holders,
-    activity24h: collection.stats.activity24h,
+    supply: collection.stats?.supply ?? null,
+    holders: collection.stats?.holders ?? null,
+    activity24h: collection.stats?.activity24h ?? null,
   };
 }
 

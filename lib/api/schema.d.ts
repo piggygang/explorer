@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-    "/collections": {
+    "/v1/collections": {
         parameters: {
             query?: never;
             header?: never;
@@ -12,8 +12,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List all indexed collections with stats
-         * @description Returns every enabled collection in the registry with its current stats. Unpaginated by design: the registry is small (3 collections today) and grows only by deliberate registry changes.
+         * List the enabled collections
+         * @description The registry, seeded from `config/collections.toml`. Disabled collections are never returned. Four rows today, so this is a single page in practice — the envelope is paginated for consistency, not need.
          */
         get: operations["listCollections"];
         put?: never;
@@ -24,14 +24,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/collections/{slug}": {
+    "/v1/collections/{slug}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get one collection with stats */
+        /** One collection, with stats */
         get: operations["getCollection"];
         put?: never;
         post?: never;
@@ -41,7 +41,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/collections/{slug}/nfts": {
+    "/v1/collections/{slug}/nfts": {
         parameters: {
             query?: never;
             header?: never;
@@ -49,10 +49,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Browse a collection's NFTs
-         * @description Cursor-paginated browse over a collection's NFTs with attribute filters, text search, an owner filter and sorting. Filter semantics: values of the same trait type OR together, distinct trait types AND together. Pagination is stable under live updates (cursor-based, never offset-based).
+         * Browse a collection with attribute filters, search and sort
+         * @description The browse grid. Population is member assets of the collection, burned included. Trait filters OR within a trait type and AND across types — the same semantics `/facets` reports counts for, so the grid and the sidebar can never disagree.
          */
-        get: operations["listCollectionNfts"];
+        get: operations["browseCollectionNfts"];
         put?: never;
         post?: never;
         delete?: never;
@@ -61,7 +61,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/collections/{slug}/facets": {
+    "/v1/collections/{slug}/facets": {
         parameters: {
             query?: never;
             header?: never;
@@ -69,8 +69,16 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Trait facets for a collection
-         * @description Every trait type with its values and counts, recomputed against the active filters. Counting is disjunctive (standard marketplace behavior): counts for trait type T are computed with T's own active filter removed and every other active filter (other trait types, `q`) applied — so users can widen a selection within a type without facets collapsing to zero. Values are sorted by count descending.
+         * Trait types, values and counts under the active filters
+         * @description Marketplace-style **disjunctive** faceting. Each trait type's counts are
+         *     computed with **its own** filter removed and every other filter applied,
+         *     so adding a second value inside a type is never a dead end, while
+         *     selecting a value in a different type shrinks this type's numbers.
+         *
+         *     Only facetable trait types appear (a collection's `facet_exclude`
+         *     removes per-asset-unique traits like Girl Gang's `Name`). Values with a
+         *     zero count are omitted. Unpaginated by contract — a collection has tens
+         *     of trait values, not thousands.
          */
         get: operations["getCollectionFacets"];
         put?: never;
@@ -81,7 +89,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/nfts/{id}": {
+    "/v1/collections/{slug}/holders": {
         parameters: {
             query?: never;
             header?: never;
@@ -89,8 +97,48 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Full NFT detail
-         * @description Full detail for one NFT: attributes, current owner, its collection, standard and burned flag.
+         * Top holders of a collection
+         * @description Ranked by holdings descending. Burned assets have no owner, so they never appear here and the counts sum to `stats.supply`. Top-N only, not cursor-paginated: each request groups the collection's owner rows, so the list is capped rather than pageable. The cohort breakdown lives on `CollectionStats.holderDistribution`.
+         */
+        get: operations["getCollectionHolders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{slug}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent activity across a collection
+         * @description Newest first, ordered by `(slot, id)` descending. Each event carries the NFT it happened to, so a recent-activity strip renders cards without a second request. `?kind=mint` is the "latest mints" strip for the dynamic Core collection.
+         */
+        get: operations["getCollectionActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/nfts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Full detail for one NFT
+         * @description Addressable even when the asset has left its collection (`membershipStatus: removed`) or has been burned — both remain valid pages with valid history.
          */
         get: operations["getNft"];
         put?: never;
@@ -101,7 +149,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/nfts/{id}/activity": {
+    "/v1/nfts/{id}/activity": {
         parameters: {
             query?: never;
             header?: never;
@@ -109,10 +157,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * NFT activity timeline
-         * @description Cursor-paginated on-chain event timeline for one NFT — mints, transfers, sales (with price and marketplace) and burns. Newest first.
+         * Activity timeline for one NFT
+         * @description Newest first, keyset-paginated on `(slot, id)` descending — the "load older" timeline. v1 serves `mint`, `transfer`, `sale` and `burn`; other classified kinds are filtered out, so a 2021-era timeline may have gaps and should not be presented as complete.
          */
-        get: operations["listNftActivity"];
+        get: operations["getNftActivity"];
         put?: never;
         post?: never;
         delete?: never;
@@ -121,7 +169,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/nfts/{id}/owners": {
+    "/v1/nfts/{id}/owners": {
         parameters: {
             query?: never;
             header?: never;
@@ -129,10 +177,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * NFT ownership history
-         * @description Cursor-paginated ownership history for one NFT, newest first. The current owner is the record whose `toSlot`/`toTimestamp` are null.
+         * Ownership history for one NFT
+         * @description Newest first. Intervals never overlap (enforced in the database), so `fromSlot` uniquely identifies a row for this asset. At most one interval is open; a burned or not-yet-backfilled asset has none. A row already returned can later gain `toSlot`/`toTs` when its interval closes.
          */
-        get: operations["listNftOwners"];
+        get: operations["getNftOwners"];
         put?: never;
         post?: never;
         delete?: never;
@@ -141,7 +189,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/wallets/{address}/nfts": {
+    "/v1/wallets/{address}/nfts": {
         parameters: {
             query?: never;
             header?: never;
@@ -149,10 +197,39 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Wallet portfolio across indexed collections
-         * @description Every indexed NFT currently owned by a wallet, grouped by collection. Unpaginated by design: each group carries `totalCount` plus the first page of NFTs; "see all" flows page through `listCollectionNfts?owner=<address>` instead of a nested cursor.
+         * A wallet's holdings across every indexed collection
+         * @description An unknown wallet is `200` with `totalCount: 0` and empty arrays, never `404` — "no pigs indexed" is a legitimate answer and the Explorer needs the empty state. Burned assets never appear (a burned asset has no owner). The grid has no `sort` parameter: the backing index orders by collection then id.
          */
-        get: operations["listWalletNfts"];
+        get: operations["getWalletPortfolio"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Global smart search across every indexed collection
+         * @description One box that understands what is pasted into it.
+         *
+         *     * A base58 address resolves by lookup: a known mint routes to that NFT,
+         *       a wallet holding indexed assets routes to that wallet, anything else
+         *       resolves to nothing — `200` with an empty result, never `404`.
+         *     * Anything else is text: `#N` matches the token number, otherwise a
+         *       case-insensitive substring of the name, grouped by collection.
+         *
+         *     `route` is the server's opinion about where the Enter key should go;
+         *     `groups` is what the palette lists. Both are always present.
+         */
+        get: operations["search"];
         put?: never;
         post?: never;
         delete?: never;
@@ -165,246 +242,553 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** @description A collection tracked by the indexer's registry. */
+        /**
+         * @description Base58 Solana public key. Compared byte-exactly — every address column uses the C collation.
+         * @example SYNarqd6dg3ZygtDhD8CNLqE8wPNdAqWv7
+         */
+        Address: string;
+        /** @description Base58 transaction signature. */
+        Signature: string;
+        /**
+         * @description A collection's URL slug.
+         * @example piggy-sol-gang
+         */
+        Slug: string;
+        /**
+         * @description A lamport amount as a decimal string (1 SOL = 1,000,000,000 lamports). A string rather than a number so the full u64 range round-trips exactly and so nobody divides by 1e9 in floating point. Parse with BigInt or a decimal library.
+         * @example 12500000000
+         */
+        Lamports: string;
+        /** @description A 64-bit identifier as a decimal string. Opaque — never parse it, never put it in a URL path. */
+        Int64String: string;
+        /** @description Opaque keyset cursor. Round-trip verbatim. */
+        Cursor: string;
+        /**
+         * @description Reachability of `imageUri`. `dead` means the 2021-era host is gone — render a placeholder rather than a broken image. `unknown` means it has not been checked; load it optimistically.
+         * @enum {string}
+         */
+        ImageStatus: "unknown" | "ok" | "dead";
+        /**
+         * @description The token standard. A collection cannot mix standards.
+         * @enum {string}
+         */
+        Standard: "token_metadata" | "core";
+        /**
+         * @description How membership is derived. `core_collection` grows on its own as assets are minted into it; `tm_allowlist` is a closed, committed mint list.
+         * @enum {string}
+         */
+        MembershipRule: "core_collection" | "tm_collection" | "tm_allowlist";
+        /**
+         * @description The full set the indexer classifies. v1 serves only `mint`, `transfer`, `sale` and `burn`; the rest are **reserved** and may begin appearing without a version bump. Clients must tolerate every member — treat an unrecognised kind as a generic timeline entry rather than crashing.
+         * @enum {string}
+         */
+        ActivityKind: "mint" | "transfer" | "sale" | "burn" | "stake" | "unstake" | "other";
+        /** @description Compact collection identity, carried by every NFT card so cross- collection grids render a badge without a second request. */
+        CollectionRef: {
+            slug: components["schemas"]["Slug"];
+            name: string;
+            /** @description Collection artwork. Null for every collection today — the column exists but no value is configured yet. */
+            imageUrl: string | null;
+        };
+        /** @description A registered, enabled collection. Disabled collections are never returned, so `enabled` is not serialized. */
         Collection: {
-            /** @description URL-safe stable identifier; the public key for all collection routes. */
-            slug: string;
-            /** @description Display name. */
+            slug: components["schemas"]["Slug"];
             name: string;
-            /**
-             * @description On-chain standard — Metaplex Token Metadata or Metaplex Core.
-             * @enum {string}
-             */
-            standard: "token_metadata" | "core";
-            /** @description On-chain collection address — the verified collection mint for `token_metadata`, the CollectionV1 asset for `core`. The two Token Metadata collection addresses are not yet recorded (team to supply); null until then. Filling them is a data change, not a contract change — never invent one. */
-            address: string | null;
-            /** @description Collection display image; null until media ingestion lands. */
+            standard: components["schemas"]["Standard"];
+            membershipRule: components["schemas"]["MembershipRule"];
+            /** @description The Core collection address, or the certified Token Metadata collection mint. Null for allowlist collections — the three Piggy Token Metadata collections have no certified collection on chain. */
+            address: components["schemas"]["Address"] | null;
+            symbol: string | null;
             imageUrl: string | null;
+            stats: components["schemas"]["CollectionStats"] | null;
         };
-        /** @description Cached collection stats (short TTL). */
+        /** @description Short-TTL cached aggregates. */
         CollectionStats: {
-            /** @description Number of non-burned NFTs. */
+            /** @description Member assets, **excluding** burned. */
             supply: number;
-            /** @description Distinct current owners. */
+            /** @description Distinct current owners. Burned assets have no owner, so they drop out. */
             holders: number;
-            /** @description On-chain events in the last 24 hours. */
+            burned: number;
+            /** @description The browse population — members including burned, i.e. `supply + burned`. This is the unfiltered result count for the browse endpoint. */
+            indexed: number;
+            /** @description Events in the last 24 hours. Counts **all** classified kinds, so it can exceed the number of events the public timeline shows. */
             activity24h: number;
-            /** @description On-chain events in the last 7 days. */
+            /** @description Events in the last 7 days, with the same caveat as `activity24h`. */
             activity7d: number;
+            /** Format: date-time */
+            lastActivityAt: string | null;
+            /** @description Holder cohorts. An array rather than fixed fields so the bucket edges can be retuned without a contract change. `assets` sums to `supply`. */
+            holderDistribution: components["schemas"]["HolderBucket"][];
+            /**
+             * Format: date-time
+             * @description When these numbers were computed.
+             */
+            asOf: string;
         };
-        CollectionWithStats: components["schemas"]["Collection"] & {
-            stats: components["schemas"]["CollectionStats"];
+        HolderBucket: {
+            /** @example 2-5 */
+            label: string;
+            minCount: number;
+            /** @description Null means unbounded. */
+            maxCount: number | null;
+            holders: number;
+            assets: number;
         };
-        NftAttribute: {
-            /** @description Trait type as recorded in the source metadata (e.g. Background, Eyes, Head). */
-            traitType: string;
-            value: string;
-        };
-        /** @description The browse/list projection of an NFT. */
+        /** @description The grid card — one asset row plus its collection badge. Burned assets are part of the browse population; `burned` is what greys the card out. */
         NftSummary: {
-            /** @description Public NFT id — the base58 mint address (`token_metadata`) or asset id (`core`). */
-            id: string;
-            collectionSlug: string;
-            /** @description Display name from metadata. */
+            address: components["schemas"]["Address"];
+            /** @description May be the empty string before the metadata backfill has run. */
             name: string;
-            /** @description The */
+            /** @description The `#N` parsed out of the name, or null when the name has none. Unnumbered assets sort last under `sort=number`. */
             number: number | null;
-            /** @description Image URL; null when media has not been ingested. */
-            imageUrl: string | null;
+            /** @description Where the image actually lives — already the re-hosted URL for collections whose original host is gone. Not validated as a URI: 2021-era metadata carries `ipfs://`, `ar://` and worse. */
+            imageUri: string | null;
+            imageStatus: components["schemas"]["ImageStatus"];
             burned: boolean;
+            /** @description Current owner. Null when burned or not yet known. */
+            owner: components["schemas"]["Address"] | null;
+            /** Format: date-time */
+            lastActivityAt: string | null;
+            /** @description Reserved — always null until rarity scoring ships. */
+            rarityRank: number | null;
+            /** @description Reserved — always null until rarity scoring ships. */
+            rarityScore: number | null;
+            collection: components["schemas"]["CollectionRef"];
         };
         NftDetail: components["schemas"]["NftSummary"] & {
-            /** @enum {string} */
-            standard: "token_metadata" | "core";
-            /** @description Off-chain metadata URI as recorded on chain; null when unavailable. */
-            metadataUri: string | null;
-            /** @description Current owner (base58); null when burned. */
-            owner: string | null;
-            collection: components["schemas"]["Collection"];
-            attributes: components["schemas"]["NftAttribute"][];
-        };
-        /** @description One on-chain event in an NFT's timeline. */
-        ActivityEvent: {
-            /** @enum {string} */
-            type: "mint" | "transfer" | "sale" | "burn";
-            /** @description Transaction signature (base58). */
-            signature: string;
+            standard: components["schemas"]["Standard"];
+            symbol: string | null;
             /**
-             * Format: int64
-             * @description Solana slot. Serialized as a JSON number — realistic slots stay far below 2^53, so this is lossless; the server must not switch to a string encoding without a contract revision.
+             * @description Always `member` in list responses. A Core asset whose update authority moved it out of the collection is still addressable here and reports `removed`.
+             * @enum {string}
              */
-            slot: number;
+            membershipStatus: "member" | "removed";
             /** Format: date-time */
-            timestamp: string;
-            /** @description Sending wallet; null for mints. */
-            from: string | null;
-            /** @description Receiving wallet; null for burns. */
-            to: string | null;
-            /**
-             * Format: int64
-             * @description Sale price in lamports; non-null only for `sale` events. JSON number — realistic prices stay far below 2^53.
-             */
-            priceLamports: number | null;
-            /** @description Marketplace name; non-null only for `sale` events. */
-            marketplace: string | null;
+            removedAt: string | null;
+            /** @description The URI recorded on chain. May point at a dead host. */
+            metadataUri: string | null;
+            /** @description The URI actually fetched. This is the link that still resolves. */
+            metadataSourceUri: string | null;
+            /** Format: date-time */
+            imageCheckedAt: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+            /** @description All attributes, including non-facetable trait types — those are shown on the detail page but never appear in `/facets`. */
+            attributes: components["schemas"]["Attribute"][];
+            ownership: components["schemas"]["OwnerCard"];
+            mint: components["schemas"]["MintInfo"];
+            activitySummary: components["schemas"]["ActivitySummary"];
         };
-        /** @description One ownership interval. The current owner is the record whose `toSlot`/`toTimestamp` are null. */
-        OwnershipRecord: {
-            /** @description Owner wallet (base58). */
-            owner: string;
-            /** Format: int64 */
+        Attribute: {
+            /** @description Interned per collection — `Background` in two collections is two distinct trait types. */
+            traitType: string;
+            /** @description Exact and case-sensitive. Send this string back verbatim as `trait[<traitType>]=<value>` to filter on it. */
+            value: string;
+            /** @description Display order from the source metadata. Not unique per asset, so render ordered by `(position, traitType, value)`. */
+            position: number;
+            /** @description False means the trait is shown as a chip but excluded from facets — such a chip must not link to a filtered browse URL. */
+            isFacet: boolean;
+            /** @description Reserved — always null until rarity scoring ships. */
+            rarityPct: number | null;
+        };
+        /** @description The owner card. `heldSince` comes from the open ownership interval, and is null when that interval disagrees with the observed owner rather than attributing a date to the wrong wallet. */
+        OwnerCard: {
+            owner: components["schemas"]["Address"] | null;
+            /** @description The slot at which ownership was observed. */
+            ownerSlot: number | null;
+            /** Format: date-time */
+            heldSince: string | null;
+            heldSinceSlot: number | null;
+            /** @description Null means the interval has no known opening transaction — render "acquired in an unknown transaction", not an empty link. */
+            acquiredBySignature: components["schemas"]["Signature"] | null;
+        };
+        /** @description There is no mint-date column; this comes from the mint event, so every field is null until the activity backfill has run for this asset. */
+        MintInfo: {
+            /** Format: date-time */
+            mintedAt: string | null;
+            mintSlot: number | null;
+            signature: components["schemas"]["Signature"] | null;
+        };
+        /** @description The compact strip above the timeline. */
+        ActivitySummary: {
+            salesCount: number;
+            transferCount: number;
+            ownerCount: number;
+            lastSalePriceLamports: components["schemas"]["Lamports"] | null;
+            /** Format: date-time */
+            lastSaleAt: string | null;
+            lastSaleMarketplace: string | null;
+        };
+        /**
+         * @description One event. Nullability is kind-dependent, and the `if`/`then` clauses
+         *     below transcribe the database's own constraints so contract tests
+         *     enforce them; code generators ignore them, which is the intended split —
+         *     types for the client, constraints for the tests.
+         *
+         *     Narrow client-side with a type guard:
+         *
+         *         type Sale = ActivityEvent & { kind: 'sale'; priceLamports: string };
+         *         const isSale = (e: ActivityEvent): e is Sale => e.kind === 'sale';
+         */
+        ActivityEvent: {
+            id: components["schemas"]["Int64String"];
+            kind: components["schemas"]["ActivityKind"];
+            signature: components["schemas"]["Signature"];
+            /** @description Ordinal of this asset's events within the transaction. Disambiguates two events for one asset in one transaction. */
+            seq: number;
+            /** @description A JSON number, not a string: Solana's own RPC types slots as numbers and the value stays far below the safe-integer limit. */
+            slot: number;
+            /**
+             * Format: date-time
+             * @description Never null — an event whose block time cannot be resolved is never classified in the first place.
+             */
+            blockTime: string;
+            /** @description Always null on `mint`. May be null on a transfer or sale — escrow-era marketplaces hide the sender, which is data, not an error. */
+            fromOwner: components["schemas"]["Address"] | null;
+            /** @description Always null on `burn`; never null on mint, transfer or sale. */
+            toOwner: components["schemas"]["Address"] | null;
+            /** @description Present exactly on `sale`. */
+            priceLamports: components["schemas"]["Lamports"] | null;
+            /** @description Free text, not an enum, so the classifier can learn new venues without a contract change. Only ever set on a sale, and may be null on a sale we could not attribute. */
+            marketplace: string | null;
+        } & (unknown & unknown & unknown & unknown & unknown);
+        CollectionActivityEvent: components["schemas"]["ActivityEvent"] & {
+            nft: components["schemas"]["NftSummary"];
+        };
+        /** @description One ownership interval. Intervals never overlap, so `fromSlot` identifies a row uniquely for this asset. */
+        OwnershipInterval: {
+            owner: components["schemas"]["Address"];
             fromSlot: number;
             /** Format: date-time */
-            fromTimestamp: string;
-            /** Format: int64 */
+            fromTs: string;
+            /** @description Null while the interval is open. */
             toSlot: number | null;
             /** Format: date-time */
-            toTimestamp: string | null;
+            toTs: string | null;
+            /** @description True exactly when the interval is open. */
+            isCurrent: boolean;
+            openedBySignature: components["schemas"]["Signature"] | null;
+            closedBySignature: components["schemas"]["Signature"] | null;
         };
-        TraitFacetValue: {
+        Holder: {
+            address: components["schemas"]["Address"];
+            /** @description Assets of this collection held by the wallet. */
+            count: number;
+            /** @description One-based; ties share the lower rank and skip the next values. Null when the server chose not to compute it. */
+            rank: number | null;
+        };
+        HoldersResponse: {
+            data: components["schemas"]["Holder"][];
+        };
+        WalletCollectionHolding: {
+            collection: components["schemas"]["CollectionRef"];
+            count: number;
+            /** @description Rank among this collection's holders. Nullable on purpose — computing it requires a full pass over the collection's owners, so the server may omit it under load. */
+            holderRank: number | null;
+        };
+        /** @description Open-ended by design: `code` is a plain string, not an enum, so adding a badge is never a breaking change. */
+        Badge: {
+            /** @example full_gang */
+            code: string;
+            label: string;
+            /** @description Null for portfolio-wide badges. */
+            collectionSlug: components["schemas"]["Slug"] | null;
+            value: number | null;
+        };
+        WalletPortfolio: {
+            address: components["schemas"]["Address"];
+            /** @description Assets held across every enabled collection. */
+            totalCount: number;
+            /** @description The full grouping, never paginated — it is bounded by the number of enabled collections. Collections with no holdings are omitted; ordered by count descending. */
+            collections: components["schemas"]["WalletCollectionHolding"][];
+            /** @description Always empty in v1. Badge membership is a registry concept, and hard-coding a set of slugs in the API would contradict this project's rule that collection membership is data, never code. Derive client-side instead: a "full set" badge is `collections.length` equal to the number of entries `/v1/collections` returns, which stays correct when a collection is added. The field is frozen here so the server can populate it later without a contract change. */
+            badges: components["schemas"]["Badge"][];
+            nfts: components["schemas"]["NftPage"];
+        };
+        /** @description Where the Enter key should go. Precedence: an exact mint beats a wallet with holdings, which beats an exact collection slug. Never returned when the best hit is fuzzy. */
+        SearchRoute: {
+            /** @enum {string} */
+            kind: "nft" | "wallet" | "collection";
+            /** @description The path segment to navigate to — an address for `nft` and `wallet`, a slug for `collection`. */
+            id: string;
+        };
+        WalletHit: {
+            address: components["schemas"]["Address"];
+            totalCount: number;
+        };
+        SearchGroup: {
+            collection: components["schemas"]["CollectionRef"];
+            /** @description Exact number of matches in this collection. */
+            total: number;
+            /** @description A capped preview, not paginated — deep results belong on the browse page with `?q=`. */
+            nfts: components["schemas"]["NftSummary"][];
+        };
+        SearchResponse: {
+            query: string;
+            /**
+             * @description How the server parsed the input.
+             * @enum {string}
+             */
+            interpretedAs: "text" | "number" | "address";
+            /** @description Null with empty `groups` and null `wallet` means nothing is indexed for this input. */
+            route: components["schemas"]["SearchRoute"] | null;
+            /** @description Set only when the input is an address that owns indexed assets. */
+            wallet: components["schemas"]["WalletHit"] | null;
+            /** @description NFT hits grouped by collection, most hits first. */
+            groups: components["schemas"]["SearchGroup"][];
+        };
+        CollectionPage: {
+            data: components["schemas"]["Collection"][];
+            nextCursor: components["schemas"]["Cursor"] | null;
+            /** @description Always equal to `nextCursor !== null`. Never computed with a COUNT. */
+            hasMore: boolean;
+        };
+        /** @description A keyset page of cards. No total — see the pagination notes; the filtered count is `FacetsResponse.total` and the unfiltered one is `CollectionStats.indexed`. */
+        NftPage: {
+            data: components["schemas"]["NftSummary"][];
+            nextCursor: components["schemas"]["Cursor"] | null;
+            hasMore: boolean;
+        };
+        ActivityPage: {
+            data: components["schemas"]["ActivityEvent"][];
+            nextCursor: components["schemas"]["Cursor"] | null;
+            hasMore: boolean;
+        };
+        CollectionActivityPage: {
+            data: components["schemas"]["CollectionActivityEvent"][];
+            nextCursor: components["schemas"]["Cursor"] | null;
+            hasMore: boolean;
+        };
+        OwnershipPage: {
+            data: components["schemas"]["OwnershipInterval"][];
+            nextCursor: components["schemas"]["Cursor"] | null;
+            hasMore: boolean;
+        };
+        FacetValue: {
+            /** @description Exact and case-sensitive; send it back verbatim to filter on it. */
             value: string;
             count: number;
         };
-        TraitFacet: {
+        Facet: {
             traitType: string;
-            /** @description Sorted by count descending. */
-            values: components["schemas"]["TraitFacetValue"][];
-        };
-        PageInfo: {
-            /** @description The page size that was applied. */
-            limit: number;
-            /** @description Opaque base64url token; pass back verbatim as `?cursor=`. Null on the last page. Clients must not parse it. */
-            nextCursor: string | null;
-            /** @description Total matching items; null when counting is too expensive for the query. */
-            total: number | null;
-        };
-        WalletCollectionGroup: {
-            collection: components["schemas"]["Collection"];
-            /** @description Total NFTs this wallet holds in the collection. */
-            totalCount: number;
-            /** @description First page of the wallet's NFTs in this collection; page through `listCollectionNfts?owner=` for the rest. */
-            nfts: components["schemas"]["NftSummary"][];
-        };
-        CollectionListResponse: {
-            data: components["schemas"]["CollectionWithStats"][];
-        };
-        CollectionResponse: {
-            data: components["schemas"]["CollectionWithStats"];
-        };
-        NftListResponse: {
-            data: components["schemas"]["NftSummary"][];
-            pageInfo: components["schemas"]["PageInfo"];
+            /** @description Ordered by count descending, then value. */
+            values: components["schemas"]["FacetValue"][];
         };
         FacetsResponse: {
-            data: components["schemas"]["TraitFacet"][];
+            /** @description Size of the result set under the active filters — the number the browse grid displays. It lives here because this endpoint already pays for the scan. */
+            total: number;
+            /** @description Ordered by trait type name. */
+            facets: components["schemas"]["Facet"][];
         };
-        NftResponse: {
-            data: components["schemas"]["NftDetail"];
-        };
-        ActivityListResponse: {
-            data: components["schemas"]["ActivityEvent"][];
-            pageInfo: components["schemas"]["PageInfo"];
-        };
-        OwnersListResponse: {
-            data: components["schemas"]["OwnershipRecord"][];
-            pageInfo: components["schemas"]["PageInfo"];
-        };
-        WalletNftsResponse: {
-            data: components["schemas"]["WalletCollectionGroup"][];
-        };
-        /** @description Error envelope for every non-2xx JSON response. Extends the pre-v1 `{"error": string}` shape by upgrading the value to an object; the top-level key is stable. */
-        ErrorResponse: {
-            error: {
-                /** @description Machine-readable code. Open set — clients must tolerate unknown values. Well-known values: `bad_request`, `not_found`, `rate_limited`, `internal`. */
-                code: string;
-                /** @description Human-readable description; not for programmatic use. */
-                message: string;
-            };
+        Error: {
+            /**
+             * @description Machine-readable code. Switch on this.
+             * @enum {string}
+             */
+            error: "invalid_parameter" | "invalid_cursor" | "unsupported_sort" | "not_found" | "rate_limited" | "internal";
+            /** @description Human-readable. Never parse it. */
+            message: string;
+            /** @description Machine-usable context, or null when there is nothing to add. */
+            details?: {
+                [key: string]: unknown;
+            } | null;
         };
     };
     responses: {
-        /** @description Not Modified — the client's `If-None-Match` matched the current ETag. No body. */
+        /** @description The client's `If-None-Match` matched. No body. Validators are repeated so the client can refresh its freshness window without a second round trip. */
         NotModified: {
             headers: {
                 ETag: components["headers"]["ETag"];
+                "Cache-Control": components["headers"]["CacheControl"];
+                Vary: components["headers"]["Vary"];
+                "X-RateLimit-Limit": components["headers"]["XRateLimitLimit"];
+                "X-RateLimit-Remaining": components["headers"]["XRateLimitRemaining"];
+                "X-RateLimit-Reset": components["headers"]["XRateLimitReset"];
                 [name: string]: unknown;
             };
             content?: never;
         };
-        /** @description Malformed request — unknown sort value, out-of-range limit, unparseable cursor, malformed trait filter. */
+        /** @description A parameter could not be parsed, or a cursor no longer applies. */
         BadRequest: {
             headers: {
                 [name: string]: unknown;
             };
             content: {
-                "application/json": components["schemas"]["ErrorResponse"];
+                "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description The requested resource does not exist. */
+        /** @description No such resource. Applies to unknown or disabled collection slugs and to unknown NFT addresses. Never used for wallets — an unknown wallet is `200` with an empty portfolio. */
         NotFound: {
             headers: {
                 [name: string]: unknown;
             };
             content: {
-                "application/json": components["schemas"]["ErrorResponse"];
+                "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Rate limit exceeded. */
+        /** @description Syntactically valid but semantically rejected. */
+        UnprocessableEntity: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Too many requests. */
         RateLimited: {
             headers: {
                 "Retry-After": components["headers"]["RetryAfter"];
-                "RateLimit-Limit": components["headers"]["RateLimitLimit"];
-                "RateLimit-Remaining": components["headers"]["RateLimitRemaining"];
-                "RateLimit-Reset": components["headers"]["RateLimitReset"];
+                "X-RateLimit-Limit": components["headers"]["XRateLimitLimit"];
+                "X-RateLimit-Remaining": components["headers"]["XRateLimitRemaining"];
+                "X-RateLimit-Reset": components["headers"]["XRateLimitReset"];
                 [name: string]: unknown;
             };
             content: {
-                "application/json": components["schemas"]["ErrorResponse"];
+                "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Internal server error. */
-        Internal: {
+        /** @description Unexpected server error. `message` is generic on purpose; correlate with the API logs by timestamp. */
+        InternalError: {
             headers: {
                 [name: string]: unknown;
             };
             content: {
-                "application/json": components["schemas"]["ErrorResponse"];
+                "application/json": components["schemas"]["Error"];
             };
         };
     };
     parameters: {
-        /** @description Collection slug — the stable public identifier. */
-        Slug: string;
-        /** @description NFT id — the base58 mint address (token_metadata) or asset id (core). */
+        /**
+         * @description The collection's URL slug.
+         * @example piggy-sol-gang
+         */
+        CollectionSlug: string;
+        /**
+         * @description The NFT's on-chain address — the mint for Token Metadata assets, the asset id for Metaplex Core. Internal database ids are never exposed.
+         * @example SYNarqd6dg3ZygtDhD8CNLqE8wPNdAqWv7
+         */
         NftId: string;
-        /** @description Base58 wallet address. */
+        /**
+         * @description A Solana wallet address.
+         * @example HLDAXhwhoQo8vntbEMc231443cEQijZ4B
+         */
         WalletAddress: string;
-        /** @description Attribute filter. Serialization is normative here, not the deepObject style (OpenAPI leaves arrays inside deepObject undefined): each selected value is one `trait[<TraitType>]=<Value>` query pair. Repeating a trait type ORs its values; distinct trait types AND together. `?trait[Background]=Pink&trait[Background]=Blue&trait[Head]=Crown` means (Background is Pink OR Blue) AND Head is Crown. Trait types and values are matched exactly (case-sensitive) against indexed attributes. */
+        /**
+         * @description Attribute filter, expressed with bracketed keys:
+         *
+         *         ?trait[Background]=Pink&trait[Background]=Blue&trait[Head]=Crown
+         *
+         *     Repeating a trait type ORs its values; distinct trait types AND
+         *     together. Trait type names and values are matched **exactly and
+         *     case-sensitively** against the collection's own dictionary —
+         *     `Background` and `background` are different keys and only one exists.
+         *
+         *     Brackets may be sent literally or percent-encoded (`%5B` / `%5D`).
+         *
+         *     Unknown input is never a 4xx, so a bookmarked URL survives a metadata
+         *     refresh: an unknown trait *type* yields an empty result set and
+         *     `facets: []`; an unknown *value* still counts its type as selected, so
+         *     it matches nothing and every other type's counts collapse to zero.
+         *
+         *     At most 16 distinct trait types and 64 values per request.
+         *
+         *     TOOLING NOTE: OpenAPI 3.1 states that for `deepObject` "the
+         *     representation of array or object properties is not defined", so this
+         *     wire format — not any generator's interpretation of it — is normative.
+         *     openapi-fetch's default query serializer throws on this shape; supply a
+         *     custom `querySerializer` (the repository README has one). Prism ignores
+         *     this parameter entirely, so the mock returns the same page with or
+         *     without it.
+         * @example {
+         *       "Background": [
+         *         "Pink",
+         *         "Blue"
+         *       ],
+         *       "Head": [
+         *         "Crown"
+         *       ]
+         *     }
+         */
         TraitFilter: {
             [key: string]: string[];
         };
-        /** @description Free-text search over NFT name, #number and mint/asset id. */
-        TextSearch: string;
-        /** @description Sort order; a leading `-` means descending. `number`/`name` sort by token number and display name. `-activity` sorts by most recent on-chain activity and has no ascending form. */
-        Sort: "number" | "-number" | "name" | "-name" | "-activity";
-        /** @description Restrict to NFTs currently owned by this base58 wallet address. This is also the paging path for wallet portfolios (see `listWalletNfts`). */
-        OwnerFilter: string;
-        /** @description Opaque pagination token from `pageInfo.nextCursor`; pass it back verbatim. Clients must not parse it. */
-        Cursor: string;
-        /** @description Page size. */
+        /**
+         * @description Text search — exactly three OR'd predicates, and nothing more:
+         *
+         *       1. base58 address **prefix**, case-sensitive;
+         *       2. exact token number, when the input looks like `#N` or `N`;
+         *       3. case-insensitive **substring** of the name.
+         *
+         *     This is not fuzzy and not typo-tolerant: `Pnk` does not find `Pink`.
+         *     Surrounding whitespace is trimmed, an empty result is treated as absent,
+         *     and `%`, `_` and `\` match literally.
+         * @example #1234
+         */
+        Q: string;
+        /**
+         * @description A leading `-` means descending; each direction is a scan of the same
+         *     index. There is deliberately no price or mint-date sort — no such column
+         *     exists.
+         *
+         *     `name` sorts by **byte order**, not locale: `#1` < `#10` < `#2`, and
+         *     uppercase sorts before lowercase. Assets with no number sort last under
+         *     `number`; assets that have never been active sort first under
+         *     `activity`.
+         *
+         *     `rarity` and `-rarity` are reserved so the client union stays stable
+         *     when rarity scoring ships; until then they return
+         *     `422 unsupported_sort`.
+         */
+        Sort: "number" | "-number" | "name" | "-name" | "activity" | "-activity" | "rarity" | "-rarity";
+        /** @description Repeat to OR: `?kind=sale&kind=transfer`. Omit for all public kinds. */
+        ActivityKindFilter: ("mint" | "transfer" | "sale" | "burn")[];
+        /** @description Page size. The default 24 divides by 2, 3, 4 and 6, so a grid has no ragged last row at any common column count. Exceeding the maximum is `422`, never a silent clamp. */
         Limit: number;
+        /** @description Opaque keyset cursor. Echo `nextCursor` verbatim; never decode, parse or construct one. Valid only for the endpoint, sort and filter set that issued it, and not guaranteed stable across deploys — treat `400 invalid_cursor` as normal and restart from page one. */
+        Cursor: string;
+        /**
+         * @description Echo a previously received `ETag` to receive `304` with no body.
+         * @example W/"1f0a2b3c4d5e6f70"
+         */
+        IfNoneMatch: string;
     };
     requestBodies: never;
     headers: {
-        /** @description Entity tag for conditional requests; send it back via `If-None-Match` to get a 304 when the resource is unchanged. */
+        /**
+         * @description Weak validator over the response body. Weak because the same resource may be served with different content codings.
+         * @example W/"1f0a2b3c4d5e6f70"
+         */
         ETag: string;
-        /** @description Request quota in the current window (IETF draft RateLimit headers). */
-        RateLimitLimit: number;
-        /** @description Requests remaining in the current window. */
-        RateLimitRemaining: number;
-        /** @description Seconds until the current rate-limit window resets. */
-        RateLimitReset: number;
-        /** @description Seconds to wait before retrying. */
+        /**
+         * @description Always `public` with a short `max-age`. The exact value is operational and may change without a version bump — depend on the header's presence, not its value.
+         * @example public, max-age=15, stale-while-revalidate=30
+         */
+        CacheControl: string;
+        /**
+         * @description Response varies by encoding and by CORS origin.
+         * @example Accept-Encoding, Origin
+         */
+        Vary: string;
+        /**
+         * @description Requests permitted in the current window.
+         * @example 120
+         */
+        XRateLimitLimit: number;
+        /**
+         * @description Requests left in the current window.
+         * @example 118
+         */
+        XRateLimitRemaining: number;
+        /**
+         * @description Unix timestamp (seconds, UTC) at which the window resets — absolute, unlike `Retry-After`, which is delta-seconds.
+         * @example 1788240600
+         */
+        XRateLimitReset: number;
+        /**
+         * @description Seconds to wait before retrying.
+         * @example 12
+         */
         RetryAfter: number;
     };
     pathItems: never;
@@ -413,38 +797,61 @@ export type $defs = Record<string, never>;
 export interface operations {
     listCollections: {
         parameters: {
-            query?: never;
-            header?: never;
+            query?: {
+                /** @description Page size. The default 24 divides by 2, 3, 4 and 6, so a grid has no ragged last row at any common column count. Exceeding the maximum is `422`, never a silent clamp. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque keyset cursor. Echo `nextCursor` verbatim; never decode, parse or construct one. Valid only for the endpoint, sort and filter set that issued it, and not guaranteed stable across deploys — treat `400 invalid_cursor` as normal and restart from page one. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: {
+                /**
+                 * @description Echo a previously received `ETag` to receive `304` with no body.
+                 * @example W/"1f0a2b3c4d5e6f70"
+                 */
+                "If-None-Match"?: components["parameters"]["IfNoneMatch"];
+            };
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description The collections. */
+            /** @description A page of collections. */
             200: {
                 headers: {
                     ETag: components["headers"]["ETag"];
-                    "RateLimit-Limit": components["headers"]["RateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["RateLimitRemaining"];
-                    "RateLimit-Reset": components["headers"]["RateLimitReset"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    Vary: components["headers"]["Vary"];
+                    "X-RateLimit-Limit": components["headers"]["XRateLimitLimit"];
+                    "X-RateLimit-Remaining": components["headers"]["XRateLimitRemaining"];
+                    "X-RateLimit-Reset": components["headers"]["XRateLimitReset"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CollectionListResponse"];
+                    "application/json": components["schemas"]["CollectionPage"];
                 };
             };
             304: components["responses"]["NotModified"];
+            400: components["responses"]["BadRequest"];
             429: components["responses"]["RateLimited"];
-            500: components["responses"]["Internal"];
+            500: components["responses"]["InternalError"];
         };
     };
     getCollection: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Echo a previously received `ETag` to receive `304` with no body.
+                 * @example W/"1f0a2b3c4d5e6f70"
+                 */
+                "If-None-Match"?: components["parameters"]["IfNoneMatch"];
+            };
             path: {
-                /** @description Collection slug — the stable public identifier. */
-                slug: components["parameters"]["Slug"];
+                /**
+                 * @description The collection's URL slug.
+                 * @example piggy-sol-gang
+                 */
+                slug: components["parameters"]["CollectionSlug"];
             };
             cookie?: never;
         };
@@ -454,90 +861,219 @@ export interface operations {
             200: {
                 headers: {
                     ETag: components["headers"]["ETag"];
-                    "RateLimit-Limit": components["headers"]["RateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["RateLimitRemaining"];
-                    "RateLimit-Reset": components["headers"]["RateLimitReset"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    Vary: components["headers"]["Vary"];
+                    "X-RateLimit-Limit": components["headers"]["XRateLimitLimit"];
+                    "X-RateLimit-Remaining": components["headers"]["XRateLimitRemaining"];
+                    "X-RateLimit-Reset": components["headers"]["XRateLimitReset"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CollectionResponse"];
-                };
-            };
-            304: components["responses"]["NotModified"];
-            404: components["responses"]["NotFound"];
-            429: components["responses"]["RateLimited"];
-            500: components["responses"]["Internal"];
-        };
-    };
-    listCollectionNfts: {
-        parameters: {
-            query?: {
-                /** @description Attribute filter. Serialization is normative here, not the deepObject style (OpenAPI leaves arrays inside deepObject undefined): each selected value is one `trait[<TraitType>]=<Value>` query pair. Repeating a trait type ORs its values; distinct trait types AND together. `?trait[Background]=Pink&trait[Background]=Blue&trait[Head]=Crown` means (Background is Pink OR Blue) AND Head is Crown. Trait types and values are matched exactly (case-sensitive) against indexed attributes. */
-                trait?: components["parameters"]["TraitFilter"];
-                /** @description Free-text search over NFT name, #number and mint/asset id. */
-                q?: components["parameters"]["TextSearch"];
-                /** @description Sort order; a leading `-` means descending. `number`/`name` sort by token number and display name. `-activity` sorts by most recent on-chain activity and has no ascending form. */
-                sort?: components["parameters"]["Sort"];
-                /** @description Restrict to NFTs currently owned by this base58 wallet address. This is also the paging path for wallet portfolios (see `listWalletNfts`). */
-                owner?: components["parameters"]["OwnerFilter"];
-                /** @description Opaque pagination token from `pageInfo.nextCursor`; pass it back verbatim. Clients must not parse it. */
-                cursor?: components["parameters"]["Cursor"];
-                /** @description Page size. */
-                limit?: components["parameters"]["Limit"];
-            };
-            header?: never;
-            path: {
-                /** @description Collection slug — the stable public identifier. */
-                slug: components["parameters"]["Slug"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description One page of NFTs. */
-            200: {
-                headers: {
-                    ETag: components["headers"]["ETag"];
-                    "RateLimit-Limit": components["headers"]["RateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["RateLimitRemaining"];
-                    "RateLimit-Reset": components["headers"]["RateLimitReset"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NftListResponse"];
+                    "application/json": components["schemas"]["Collection"];
                 };
             };
             304: components["responses"]["NotModified"];
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["RateLimited"];
-            500: components["responses"]["Internal"];
+            500: components["responses"]["InternalError"];
         };
     };
-    getCollectionFacets: {
+    browseCollectionNfts: {
         parameters: {
             query?: {
-                /** @description Attribute filter. Serialization is normative here, not the deepObject style (OpenAPI leaves arrays inside deepObject undefined): each selected value is one `trait[<TraitType>]=<Value>` query pair. Repeating a trait type ORs its values; distinct trait types AND together. `?trait[Background]=Pink&trait[Background]=Blue&trait[Head]=Crown` means (Background is Pink OR Blue) AND Head is Crown. Trait types and values are matched exactly (case-sensitive) against indexed attributes. */
+                /**
+                 * @description Attribute filter, expressed with bracketed keys:
+                 *
+                 *         ?trait[Background]=Pink&trait[Background]=Blue&trait[Head]=Crown
+                 *
+                 *     Repeating a trait type ORs its values; distinct trait types AND
+                 *     together. Trait type names and values are matched **exactly and
+                 *     case-sensitively** against the collection's own dictionary —
+                 *     `Background` and `background` are different keys and only one exists.
+                 *
+                 *     Brackets may be sent literally or percent-encoded (`%5B` / `%5D`).
+                 *
+                 *     Unknown input is never a 4xx, so a bookmarked URL survives a metadata
+                 *     refresh: an unknown trait *type* yields an empty result set and
+                 *     `facets: []`; an unknown *value* still counts its type as selected, so
+                 *     it matches nothing and every other type's counts collapse to zero.
+                 *
+                 *     At most 16 distinct trait types and 64 values per request.
+                 *
+                 *     TOOLING NOTE: OpenAPI 3.1 states that for `deepObject` "the
+                 *     representation of array or object properties is not defined", so this
+                 *     wire format — not any generator's interpretation of it — is normative.
+                 *     openapi-fetch's default query serializer throws on this shape; supply a
+                 *     custom `querySerializer` (the repository README has one). Prism ignores
+                 *     this parameter entirely, so the mock returns the same page with or
+                 *     without it.
+                 * @example {
+                 *       "Background": [
+                 *         "Pink",
+                 *         "Blue"
+                 *       ],
+                 *       "Head": [
+                 *         "Crown"
+                 *       ]
+                 *     }
+                 */
                 trait?: components["parameters"]["TraitFilter"];
-                /** @description Free-text search over NFT name, #number and mint/asset id. */
-                q?: components["parameters"]["TextSearch"];
+                /**
+                 * @description Text search — exactly three OR'd predicates, and nothing more:
+                 *
+                 *       1. base58 address **prefix**, case-sensitive;
+                 *       2. exact token number, when the input looks like `#N` or `N`;
+                 *       3. case-insensitive **substring** of the name.
+                 *
+                 *     This is not fuzzy and not typo-tolerant: `Pnk` does not find `Pink`.
+                 *     Surrounding whitespace is trimmed, an empty result is treated as absent,
+                 *     and `%`, `_` and `\` match literally.
+                 * @example #1234
+                 */
+                q?: components["parameters"]["Q"];
+                /**
+                 * @description A leading `-` means descending; each direction is a scan of the same
+                 *     index. There is deliberately no price or mint-date sort — no such column
+                 *     exists.
+                 *
+                 *     `name` sorts by **byte order**, not locale: `#1` < `#10` < `#2`, and
+                 *     uppercase sorts before lowercase. Assets with no number sort last under
+                 *     `number`; assets that have never been active sort first under
+                 *     `activity`.
+                 *
+                 *     `rarity` and `-rarity` are reserved so the client union stays stable
+                 *     when rarity scoring ships; until then they return
+                 *     `422 unsupported_sort`.
+                 */
+                sort?: components["parameters"]["Sort"];
+                /** @description Page size. The default 24 divides by 2, 3, 4 and 6, so a grid has no ragged last row at any common column count. Exceeding the maximum is `422`, never a silent clamp. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque keyset cursor. Echo `nextCursor` verbatim; never decode, parse or construct one. Valid only for the endpoint, sort and filter set that issued it, and not guaranteed stable across deploys — treat `400 invalid_cursor` as normal and restart from page one. */
+                cursor?: components["parameters"]["Cursor"];
             };
-            header?: never;
+            header?: {
+                /**
+                 * @description Echo a previously received `ETag` to receive `304` with no body.
+                 * @example W/"1f0a2b3c4d5e6f70"
+                 */
+                "If-None-Match"?: components["parameters"]["IfNoneMatch"];
+            };
             path: {
-                /** @description Collection slug — the stable public identifier. */
-                slug: components["parameters"]["Slug"];
+                /**
+                 * @description The collection's URL slug.
+                 * @example piggy-sol-gang
+                 */
+                slug: components["parameters"]["CollectionSlug"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description The facets. */
+            /** @description A page of NFT cards. */
             200: {
                 headers: {
                     ETag: components["headers"]["ETag"];
-                    "RateLimit-Limit": components["headers"]["RateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["RateLimitRemaining"];
-                    "RateLimit-Reset": components["headers"]["RateLimitReset"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    Vary: components["headers"]["Vary"];
+                    "X-RateLimit-Limit": components["headers"]["XRateLimitLimit"];
+                    "X-RateLimit-Remaining": components["headers"]["XRateLimitRemaining"];
+                    "X-RateLimit-Reset": components["headers"]["XRateLimitReset"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NftPage"];
+                };
+            };
+            304: components["responses"]["NotModified"];
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getCollectionFacets: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Attribute filter, expressed with bracketed keys:
+                 *
+                 *         ?trait[Background]=Pink&trait[Background]=Blue&trait[Head]=Crown
+                 *
+                 *     Repeating a trait type ORs its values; distinct trait types AND
+                 *     together. Trait type names and values are matched **exactly and
+                 *     case-sensitively** against the collection's own dictionary —
+                 *     `Background` and `background` are different keys and only one exists.
+                 *
+                 *     Brackets may be sent literally or percent-encoded (`%5B` / `%5D`).
+                 *
+                 *     Unknown input is never a 4xx, so a bookmarked URL survives a metadata
+                 *     refresh: an unknown trait *type* yields an empty result set and
+                 *     `facets: []`; an unknown *value* still counts its type as selected, so
+                 *     it matches nothing and every other type's counts collapse to zero.
+                 *
+                 *     At most 16 distinct trait types and 64 values per request.
+                 *
+                 *     TOOLING NOTE: OpenAPI 3.1 states that for `deepObject` "the
+                 *     representation of array or object properties is not defined", so this
+                 *     wire format — not any generator's interpretation of it — is normative.
+                 *     openapi-fetch's default query serializer throws on this shape; supply a
+                 *     custom `querySerializer` (the repository README has one). Prism ignores
+                 *     this parameter entirely, so the mock returns the same page with or
+                 *     without it.
+                 * @example {
+                 *       "Background": [
+                 *         "Pink",
+                 *         "Blue"
+                 *       ],
+                 *       "Head": [
+                 *         "Crown"
+                 *       ]
+                 *     }
+                 */
+                trait?: components["parameters"]["TraitFilter"];
+                /**
+                 * @description Text search — exactly three OR'd predicates, and nothing more:
+                 *
+                 *       1. base58 address **prefix**, case-sensitive;
+                 *       2. exact token number, when the input looks like `#N` or `N`;
+                 *       3. case-insensitive **substring** of the name.
+                 *
+                 *     This is not fuzzy and not typo-tolerant: `Pnk` does not find `Pink`.
+                 *     Surrounding whitespace is trimmed, an empty result is treated as absent,
+                 *     and `%`, `_` and `\` match literally.
+                 * @example #1234
+                 */
+                q?: components["parameters"]["Q"];
+            };
+            header?: {
+                /**
+                 * @description Echo a previously received `ETag` to receive `304` with no body.
+                 * @example W/"1f0a2b3c4d5e6f70"
+                 */
+                "If-None-Match"?: components["parameters"]["IfNoneMatch"];
+            };
+            path: {
+                /**
+                 * @description The collection's URL slug.
+                 * @example piggy-sol-gang
+                 */
+                slug: components["parameters"]["CollectionSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Facet counts, plus the size of the filtered result set. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    Vary: components["headers"]["Vary"];
+                    "X-RateLimit-Limit": components["headers"]["XRateLimitLimit"];
+                    "X-RateLimit-Remaining": components["headers"]["XRateLimitRemaining"];
+                    "X-RateLimit-Reset": components["headers"]["XRateLimitReset"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -548,15 +1084,120 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["RateLimited"];
-            500: components["responses"]["Internal"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getCollectionHolders: {
+        parameters: {
+            query?: {
+                /** @description How many holders to return, ranked descending. */
+                limit?: number;
+            };
+            header?: {
+                /**
+                 * @description Echo a previously received `ETag` to receive `304` with no body.
+                 * @example W/"1f0a2b3c4d5e6f70"
+                 */
+                "If-None-Match"?: components["parameters"]["IfNoneMatch"];
+            };
+            path: {
+                /**
+                 * @description The collection's URL slug.
+                 * @example piggy-sol-gang
+                 */
+                slug: components["parameters"]["CollectionSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The top holders. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    Vary: components["headers"]["Vary"];
+                    "X-RateLimit-Limit": components["headers"]["XRateLimitLimit"];
+                    "X-RateLimit-Remaining": components["headers"]["XRateLimitRemaining"];
+                    "X-RateLimit-Reset": components["headers"]["XRateLimitReset"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HoldersResponse"];
+                };
+            };
+            304: components["responses"]["NotModified"];
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getCollectionActivity: {
+        parameters: {
+            query?: {
+                /** @description Repeat to OR: `?kind=sale&kind=transfer`. Omit for all public kinds. */
+                kind?: components["parameters"]["ActivityKindFilter"];
+                /** @description Page size. The default 24 divides by 2, 3, 4 and 6, so a grid has no ragged last row at any common column count. Exceeding the maximum is `422`, never a silent clamp. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque keyset cursor. Echo `nextCursor` verbatim; never decode, parse or construct one. Valid only for the endpoint, sort and filter set that issued it, and not guaranteed stable across deploys — treat `400 invalid_cursor` as normal and restart from page one. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: {
+                /**
+                 * @description Echo a previously received `ETag` to receive `304` with no body.
+                 * @example W/"1f0a2b3c4d5e6f70"
+                 */
+                "If-None-Match"?: components["parameters"]["IfNoneMatch"];
+            };
+            path: {
+                /**
+                 * @description The collection's URL slug.
+                 * @example piggy-sol-gang
+                 */
+                slug: components["parameters"]["CollectionSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of events, newest first. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    Vary: components["headers"]["Vary"];
+                    "X-RateLimit-Limit": components["headers"]["XRateLimitLimit"];
+                    "X-RateLimit-Remaining": components["headers"]["XRateLimitRemaining"];
+                    "X-RateLimit-Reset": components["headers"]["XRateLimitReset"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionActivityPage"];
+                };
+            };
+            304: components["responses"]["NotModified"];
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
         };
     };
     getNft: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Echo a previously received `ETag` to receive `304` with no body.
+                 * @example W/"1f0a2b3c4d5e6f70"
+                 */
+                "If-None-Match"?: components["parameters"]["IfNoneMatch"];
+            };
             path: {
-                /** @description NFT id — the base58 mint address (token_metadata) or asset id (core). */
+                /**
+                 * @description The NFT's on-chain address — the mint for Token Metadata assets, the asset id for Metaplex Core. Internal database ids are never exposed.
+                 * @example SYNarqd6dg3ZygtDhD8CNLqE8wPNdAqWv7
+                 */
                 id: components["parameters"]["NftId"];
             };
             cookie?: never;
@@ -567,124 +1208,212 @@ export interface operations {
             200: {
                 headers: {
                     ETag: components["headers"]["ETag"];
-                    "RateLimit-Limit": components["headers"]["RateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["RateLimitRemaining"];
-                    "RateLimit-Reset": components["headers"]["RateLimitReset"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    Vary: components["headers"]["Vary"];
+                    "X-RateLimit-Limit": components["headers"]["XRateLimitLimit"];
+                    "X-RateLimit-Remaining": components["headers"]["XRateLimitRemaining"];
+                    "X-RateLimit-Reset": components["headers"]["XRateLimitReset"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["NftResponse"];
-                };
-            };
-            304: components["responses"]["NotModified"];
-            404: components["responses"]["NotFound"];
-            429: components["responses"]["RateLimited"];
-            500: components["responses"]["Internal"];
-        };
-    };
-    listNftActivity: {
-        parameters: {
-            query?: {
-                /** @description Opaque pagination token from `pageInfo.nextCursor`; pass it back verbatim. Clients must not parse it. */
-                cursor?: components["parameters"]["Cursor"];
-                /** @description Page size. */
-                limit?: components["parameters"]["Limit"];
-            };
-            header?: never;
-            path: {
-                /** @description NFT id — the base58 mint address (token_metadata) or asset id (core). */
-                id: components["parameters"]["NftId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description One page of events, newest first. */
-            200: {
-                headers: {
-                    ETag: components["headers"]["ETag"];
-                    "RateLimit-Limit": components["headers"]["RateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["RateLimitRemaining"];
-                    "RateLimit-Reset": components["headers"]["RateLimitReset"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ActivityListResponse"];
+                    "application/json": components["schemas"]["NftDetail"];
                 };
             };
             304: components["responses"]["NotModified"];
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["RateLimited"];
-            500: components["responses"]["Internal"];
+            500: components["responses"]["InternalError"];
         };
     };
-    listNftOwners: {
+    getNftActivity: {
         parameters: {
             query?: {
-                /** @description Opaque pagination token from `pageInfo.nextCursor`; pass it back verbatim. Clients must not parse it. */
-                cursor?: components["parameters"]["Cursor"];
-                /** @description Page size. */
+                /** @description Repeat to OR: `?kind=sale&kind=transfer`. Omit for all public kinds. */
+                kind?: components["parameters"]["ActivityKindFilter"];
+                /** @description Page size. The default 24 divides by 2, 3, 4 and 6, so a grid has no ragged last row at any common column count. Exceeding the maximum is `422`, never a silent clamp. */
                 limit?: components["parameters"]["Limit"];
+                /** @description Opaque keyset cursor. Echo `nextCursor` verbatim; never decode, parse or construct one. Valid only for the endpoint, sort and filter set that issued it, and not guaranteed stable across deploys — treat `400 invalid_cursor` as normal and restart from page one. */
+                cursor?: components["parameters"]["Cursor"];
             };
-            header?: never;
+            header?: {
+                /**
+                 * @description Echo a previously received `ETag` to receive `304` with no body.
+                 * @example W/"1f0a2b3c4d5e6f70"
+                 */
+                "If-None-Match"?: components["parameters"]["IfNoneMatch"];
+            };
             path: {
-                /** @description NFT id — the base58 mint address (token_metadata) or asset id (core). */
+                /**
+                 * @description The NFT's on-chain address — the mint for Token Metadata assets, the asset id for Metaplex Core. Internal database ids are never exposed.
+                 * @example SYNarqd6dg3ZygtDhD8CNLqE8wPNdAqWv7
+                 */
                 id: components["parameters"]["NftId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description One page of ownership records, newest first. */
+            /** @description A page of events, newest first. */
             200: {
                 headers: {
                     ETag: components["headers"]["ETag"];
-                    "RateLimit-Limit": components["headers"]["RateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["RateLimitRemaining"];
-                    "RateLimit-Reset": components["headers"]["RateLimitReset"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    Vary: components["headers"]["Vary"];
+                    "X-RateLimit-Limit": components["headers"]["XRateLimitLimit"];
+                    "X-RateLimit-Remaining": components["headers"]["XRateLimitRemaining"];
+                    "X-RateLimit-Reset": components["headers"]["XRateLimitReset"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OwnersListResponse"];
+                    "application/json": components["schemas"]["ActivityPage"];
                 };
             };
             304: components["responses"]["NotModified"];
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["RateLimited"];
-            500: components["responses"]["Internal"];
+            500: components["responses"]["InternalError"];
         };
     };
-    listWalletNfts: {
+    getNftOwners: {
         parameters: {
-            query?: never;
-            header?: never;
+            query?: {
+                /** @description Page size. The default 24 divides by 2, 3, 4 and 6, so a grid has no ragged last row at any common column count. Exceeding the maximum is `422`, never a silent clamp. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque keyset cursor. Echo `nextCursor` verbatim; never decode, parse or construct one. Valid only for the endpoint, sort and filter set that issued it, and not guaranteed stable across deploys — treat `400 invalid_cursor` as normal and restart from page one. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: {
+                /**
+                 * @description Echo a previously received `ETag` to receive `304` with no body.
+                 * @example W/"1f0a2b3c4d5e6f70"
+                 */
+                "If-None-Match"?: components["parameters"]["IfNoneMatch"];
+            };
             path: {
-                /** @description Base58 wallet address. */
+                /**
+                 * @description The NFT's on-chain address — the mint for Token Metadata assets, the asset id for Metaplex Core. Internal database ids are never exposed.
+                 * @example SYNarqd6dg3ZygtDhD8CNLqE8wPNdAqWv7
+                 */
+                id: components["parameters"]["NftId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of ownership intervals, newest first. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    Vary: components["headers"]["Vary"];
+                    "X-RateLimit-Limit": components["headers"]["XRateLimitLimit"];
+                    "X-RateLimit-Remaining": components["headers"]["XRateLimitRemaining"];
+                    "X-RateLimit-Reset": components["headers"]["XRateLimitReset"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnershipPage"];
+                };
+            };
+            304: components["responses"]["NotModified"];
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getWalletPortfolio: {
+        parameters: {
+            query?: {
+                /** @description Narrow the `nfts` grid to one collection. `collections` and `totalCount` are unaffected by it. */
+                collection?: string;
+                /** @description Page size. The default 24 divides by 2, 3, 4 and 6, so a grid has no ragged last row at any common column count. Exceeding the maximum is `422`, never a silent clamp. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque keyset cursor. Echo `nextCursor` verbatim; never decode, parse or construct one. Valid only for the endpoint, sort and filter set that issued it, and not guaranteed stable across deploys — treat `400 invalid_cursor` as normal and restart from page one. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: {
+                /**
+                 * @description Echo a previously received `ETag` to receive `304` with no body.
+                 * @example W/"1f0a2b3c4d5e6f70"
+                 */
+                "If-None-Match"?: components["parameters"]["IfNoneMatch"];
+            };
+            path: {
+                /**
+                 * @description A Solana wallet address.
+                 * @example HLDAXhwhoQo8vntbEMc231443cEQijZ4B
+                 */
                 address: components["parameters"]["WalletAddress"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description The portfolio, grouped by collection. */
+            /** @description The portfolio. */
             200: {
                 headers: {
                     ETag: components["headers"]["ETag"];
-                    "RateLimit-Limit": components["headers"]["RateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["RateLimitRemaining"];
-                    "RateLimit-Reset": components["headers"]["RateLimitReset"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    Vary: components["headers"]["Vary"];
+                    "X-RateLimit-Limit": components["headers"]["XRateLimitLimit"];
+                    "X-RateLimit-Remaining": components["headers"]["XRateLimitRemaining"];
+                    "X-RateLimit-Reset": components["headers"]["XRateLimitReset"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WalletNftsResponse"];
+                    "application/json": components["schemas"]["WalletPortfolio"];
                 };
             };
             304: components["responses"]["NotModified"];
             400: components["responses"]["BadRequest"];
             429: components["responses"]["RateLimited"];
-            500: components["responses"]["Internal"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    search: {
+        parameters: {
+            query: {
+                /** @description The raw search input. */
+                q: string;
+                /** @description Restrict text results to a single collection. */
+                collection?: string;
+                /** @description Maximum NFT results per collection group. */
+                limit?: number;
+            };
+            header?: {
+                /**
+                 * @description Echo a previously received `ETag` to receive `304` with no body.
+                 * @example W/"1f0a2b3c4d5e6f70"
+                 */
+                "If-None-Match"?: components["parameters"]["IfNoneMatch"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Search results. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    Vary: components["headers"]["Vary"];
+                    "X-RateLimit-Limit": components["headers"]["XRateLimitLimit"];
+                    "X-RateLimit-Remaining": components["headers"]["XRateLimitRemaining"];
+                    "X-RateLimit-Reset": components["headers"]["XRateLimitReset"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            304: components["responses"]["NotModified"];
+            400: components["responses"]["BadRequest"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
         };
     };
 }

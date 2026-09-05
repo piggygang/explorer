@@ -1,18 +1,16 @@
 import Link from "next/link";
-import { shorten } from "@/lib/format";
 import {
   type BrowseParams,
   clearHref,
-  dropOwnerHref,
   dropQueryHref,
   openSheetHref,
   toggleTraitHref,
 } from "@/lib/browse-params";
 
 /**
- * The chip row. One chip per selected trait value, plus one for q and one for
- * owner so a wallet deep link is visible and reversible rather than an invisible
- * filter narrowing the grid.
+ * The chip row. One chip per selected trait value, plus one for q, so every
+ * filter narrowing the grid is visible and reversible rather than an invisible
+ * one arriving from a bookmarked URL.
  *
  * It reads params, never facets, so a chip for a facet-excluded trait type that
  * arrives via URL is still removable even though no tab for it exists.
@@ -40,7 +38,7 @@ export function ActiveFilters({ slug, params }: { slug: string; params: BrowsePa
     })),
   );
 
-  if (chips.length === 0 && !params.q && !params.owner) return null;
+  if (chips.length === 0 && !params.q) return null;
 
   return (
     <div className={ROW}>
@@ -59,23 +57,6 @@ export function ActiveFilters({ slug, params }: { slug: string; params: BrowsePa
         <span className={CHIP}>
           <span className={`${LABEL} text-ink-muted`}>Search · {params.q}</span>
           <Link href={dropQueryHref(slug, params)} aria-label="Remove search" className={REMOVE}>
-            <span aria-hidden="true">✕</span>
-          </Link>
-        </span>
-      )}
-
-      {/* The owner chip has no sheet tab to open — the facets endpoint accepts
-          no owner parameter — so its body is a span, not a link. */}
-      {params.owner && (
-        <span className={CHIP}>
-          <span className={`${LABEL} text-ink-muted`}>
-            Owner · <span className="font-mono">{shorten(params.owner)}</span>
-          </span>
-          <Link
-            href={dropOwnerHref(slug, params)}
-            aria-label="Remove owner filter"
-            className={REMOVE}
-          >
             <span aria-hidden="true">✕</span>
           </Link>
         </span>

@@ -9,7 +9,7 @@
 // ids are recorded nowhere), so its fixture ids are sentinel-style base58 —
 // obviously synthetic, never plausible fakes.
 
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,45 +17,55 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DRESSME = path.resolve(HERE, "../../dressme");
 const OUT = path.resolve(HERE, "../lib/api/fixtures");
 
-// The sibling asset repo holds the real per-mint art. It is optional: without
-// it every fixture keeps imageUrl null, which is what the API returns today
-// anyway — the prototype just becomes much harder to review.
+// The sibling asset repo holds the committed metaboss dumps, which carry each
+// mint's on-chain metadata URI. It is optional: without it every fixture keeps
+// imageUri null, which is what the API returns for an un-ingested asset anyway.
+// No art is downloaded or committed — see the image pass below.
 const ASSETS = path.resolve(HERE, "../../assets");
-const ART_DIR = path.resolve(HERE, "../public/piggy/nft");
-const ART_URL = "/piggy/nft";
-const ART_SOURCE = {
-  "piggy-sol-gang": "piggy-sol-gang-images",
-  "piggy-girl-gang": "piggy-girl-gang-images",
+// Where each collection's metadata was re-hosted after its original host went
+// away, mint by mint.
+const REHOST_MAPS = {
+  "piggy-girl-gang": [
+    "piggy-girl-gang-new-uris.json",
+    "piggy-girl-gang-new-uris-remaining.json",
+    "piggy-girl-gang-new-uris-remaining-2.json",
+  ],
 };
-// Most of piggy-sol-gang-images is 0-byte placeholders, but the committed
-// metaboss dumps carry each mint's metadata URI, and that re-host serves the
-// art. So: local bytes when they exist, the re-host when they do not.
 const ART_METADATA = {
   "piggy-sol-gang": "piggy-sol-gang-metaboss-full",
   "piggy-girl-gang": "piggy-girl-gang-metaboss-full",
 };
-// One fixture points at a host that will never answer, so the card's onError
-// fallback is visible in review rather than merely implemented.
+// One fixture points at a host that will never answer, so the dead-image path
+// is visible in review rather than merely implemented.
 const DEAD_IMAGE_URL = "https://arweave.net/this-link-rotted-in-2021.png";
 
 // Mirrors dressme lib/collections.ts — the wire alphabet of look codes.
 const LOOK_ALPHABET =
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_";
 
-// How many sample tokens per collection. 30 for the first collection so the
-// default page size (24) has a real second page to serve.
+// How many sample tokens per collection. Enough that every collection has more
+// than one page at the contract's default limit of 24, so the browse grid's
+// append path is exercised everywhere and not just on the largest collection.
 const SAMPLE = [
-  { slug: "piggy-sol-gang", count: 30, standard: "token_metadata" },
-  { slug: "piggy-girl-gang", count: 10, standard: "token_metadata" },
-  { slug: "piggy-gang", count: 6, standard: "core" },
+  { slug: "piggy-sol-gang", count: 120, standard: "token_metadata" },
+  { slug: "piggy-girl-gang", count: 72, standard: "token_metadata" },
+  { slug: "piggy-gang", count: 30, standard: "core" },
 ];
 
-// Presentation-free stats, matching the examples embedded in openapi/v1.yaml
-// so `prism mock` and the in-app mock tell the same story.
-const STATS = {
-  "piggy-sol-gang": { holders: 2914, activity24h: 12, activity7d: 87 },
-  "piggy-girl-gang": { holders: 1408, activity24h: 5, activity7d: 41 },
-  "piggy-gang": { holders: 3120, activity24h: 18, activity7d: 122 },
+const SYMBOL = {
+  "piggy-sol-gang": "PSG",
+  "piggy-girl-gang": "PGG",
+  // The Core collection carries no symbol on chain.
+  "piggy-gang": null,
+};
+
+// How membership is derived. The two Token Metadata collections have no
+// certified collection on chain, so they are committed allowlists; the Core one
+// grows on its own as assets are minted into it.
+const MEMBERSHIP_RULE = {
+  "piggy-sol-gang": "tm_allowlist",
+  "piggy-girl-gang": "tm_allowlist",
+  "piggy-gang": "core_collection",
 };
 
 const COLLECTION_ADDRESS = {
@@ -165,209 +175,438 @@ for (const { slug, count, standard } of SAMPLE) {
       ? loadFixedWidth(path.join(DRESSME, "public/piggy", slug, "mints.txt"), slug)
       : null;
 
-  collections.push({
-    slug,
-    name: DISPLAY_NAME[slug],
-    standard,
-    address: COLLECTION_ADDRESS[slug],
-    imageUrl: null,
-    stats: { supply: manifest.supply, ...STATS[slug] },
-  });
-
   for (let n = 0; n < count; n += 1) {
     const id = tokens.firstId + n;
+    const address = mints ? mintAt(mints, id) : sentinelCoreId(id);
+    // The contract's own examples name Token Metadata assets "<Collection> #N"
+    // even though the metaboss dumps show the bare on-chain "#N". Following the
+    // examples, because ?q= substring search is specified against them; one
+    // line to flip if the indexer says otherwise.
+    const name = standard === "core" ? `#${id}` : `${DISPLAY_NAME[slug]} #${id}`;
     nfts.push({
-      id: mints ? mintAt(mints, id) : sentinelCoreId(id),
       collectionSlug: slug,
-      // Core assets are named "#N" on chain; the minted collections carry
-      // their collection name.
-      name: standard === "core" ? `#${id}` : `${DISPLAY_NAME[slug]} #${id}`,
+      address,
+      name,
       number: id,
-      // Filled in by the art pass below, once the mint ids are known.
-      imageUrl: null,
+      // Filled in by the image pass below, once the addresses are known.
+      imageUri: null,
+      imageStatus: "unknown",
       burned: false,
-      standard,
-      metadataUri: null,
-      // The demo wallet owns the first two of each collection; the rest
-      // rotate through the sentinel holders.
       owner: n < 2 ? DEMO_WALLET : WALLETS[1 + (n % (WALLETS.length - 1))],
-      attributes: attributesAt(manifest, tokens, id),
+      // Filled in by the history pass below.
+      lastActivityAt: null,
+      // SYNTHETIC, and the only invented values in this file. The real API
+      // returns null for both until rarity scoring ships (ALG-627) — the
+      // contract says so in as many words. They exist here so the browse card's
+      // rank badge is reviewable; `sort=rarity` still answers 422
+      // unsupported_sort exactly as production does, so nothing else can lean
+      // on them.
+      rarityRank: null,
+      rarityScore: null,
+      standard,
+      symbol: SYMBOL[slug],
+      membershipStatus: "member",
+      removedAt: null,
+      metadataUri: null,
+      metadataSourceUri: null,
+      imageCheckedAt: null,
+      updatedAt: null,
+      attributes: attributesAt(manifest, tokens, id).map((attribute, position) => ({
+        ...attribute,
+        position,
+        // Girl Gang's per-asset-unique "Name" is the collection's facet_exclude
+        // case: shown as a chip, never linked to a filtered browse URL.
+        isFacet: attribute.traitType !== "Name",
+        // Reserved by the contract, always null until ALG-627. Trait chips take
+        // their share from facet counts instead (lib/rarity.ts).
+        rarityPct: null,
+      })),
     });
   }
 }
 
-// ------------------------------------------------------------------ art pass
-//
-// The contract says imageUrl is null on every NFT, and it will stay null until
-// media ingestion lands. That is honest but unreviewable: a browse grid of 24
-// identical brand marks tells nobody whether the design works.
-//
-// So the mock runs ahead of production ingestion here, exactly as it already
-// does for activity and ownership: the 40 token_metadata fixtures are real
-// mints whose art already exists in ../assets, so it is downsized into
-// public/piggy/nft/ and pointed at. The 6 Core fixtures have sentinel ids and
-// no art, so they keep imageUrl null and demonstrate that path for free, and
-// one real fixture is pointed at a dead host to exercise the onError fallback.
+// Rank within each collection by trait scarcity, rarest first. Synthetic but not
+// arbitrary: a random rank would read as wrong the moment a reviewer opened a
+// one-of-a-kind pig and found it ranked 90th.
+for (const { slug } of SAMPLE) {
+  const rows = nfts.filter((nft) => nft.collectionSlug === slug);
+  const counts = new Map();
+  for (const nft of rows) {
+    for (const attribute of nft.attributes) {
+      const key = `${attribute.traitType} ${attribute.value}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  const scored = rows.map((nft) => ({
+    nft,
+    // Sum of inverse frequencies, the usual open rarity-score shape.
+    score: nft.attributes.reduce(
+      (total, attribute) =>
+        total + rows.length / counts.get(`${attribute.traitType} ${attribute.value}`),
+      0,
+    ),
+  }));
+  scored.sort((a, b) => b.score - a.score);
+  scored.forEach(({ nft, score }, index) => {
+    nft.rarityRank = index + 1;
+    nft.rarityScore = Math.round(score * 100) / 100;
+  });
+}
 
-/** Local bytes if there are any, else the metadata's own image URL. */
-async function artInput(nft) {
-  const dir = ART_SOURCE[nft.collectionSlug];
+// ------------------------------------------------------------- image pass
+//
+// imageUri is "where the image actually lives — already the re-hosted URL for
+// collections whose original host is gone". That re-host is real and serving,
+// and the committed metaboss dumps carry each mint's metadata URI, so the
+// fixtures point straight at it. Nothing is downloaded and nothing is
+// committed: a mock that served locally-resized WebP would be rehearsing a
+// request path production never takes, and it put a megabyte of binaries in
+// git for every sample size anyone ever tried.
+
+// Two re-hosts, two layouts, both symmetrical: the image sits beside the
+// metadata under a sibling directory. Deriving the URL by substitution beats
+// one metadata fetch per asset, and anything that does not match falls back to
+// reading the JSON.
+const IMAGE_PATH_RULES = [
+  // Piggy SOL Gang: .../old/metadata/<addr>.json -> .../old/images/<addr>.png
+  [/\/metadata\/([^/]+)\.json$/, "/images/$1.png"],
+  // Piggy Girl Gang: .../<slug>-json/<addr>.json -> .../<slug>-images/<addr>.png
+  [/-json\/([^/]+)\.json$/, "-images/$1.png"],
+];
+
+/**
+ * Girl Gang's on-chain URI still points at the 2021-era shdw-drive host, which
+ * is gone. The asset repo records where each mint's metadata was re-hosted, and
+ * that split is exactly the contract's metadataUri (recorded on chain, may be
+ * dead) versus metadataSourceUri (the link that still resolves).
+ */
+function loadRehostMap(slug) {
+  const files = REHOST_MAPS[slug] ?? [];
+  const map = new Map();
+  for (const file of files) {
+    const full = path.join(ASSETS, file);
+    if (!existsSync(full)) continue;
+    for (const row of JSON.parse(readFileSync(full, "utf8"))) {
+      map.set(row.mint_account, row.new_uri);
+    }
+  }
+  return map;
+}
+
+/** The metadata URI recorded on chain, from the committed metaboss dump. */
+function metadataUriOf(nft) {
+  const dir = ART_METADATA[nft.collectionSlug];
   if (!dir) return null;
-
-  const local = path.join(ASSETS, dir, `${nft.id}.png`);
-  if (existsSync(local) && statSync(local).size > 0) return local;
-
-  const dump = path.join(ASSETS, ART_METADATA[nft.collectionSlug] ?? "", `${nft.id}.json`);
+  const dump = path.join(ASSETS, dir, `${nft.address}.json`);
   if (!existsSync(dump)) return null;
-  const { uri } = JSON.parse(readFileSync(dump, "utf8"));
-  if (!uri) return null;
+  return JSON.parse(readFileSync(dump, "utf8")).uri ?? null;
+}
 
+async function imageUriOf(sourceUri, address) {
+  for (const [pattern, replacement] of IMAGE_PATH_RULES) {
+    const match = pattern.exec(sourceUri);
+    if (match && match[1] === address) return sourceUri.replace(pattern, replacement);
+  }
   try {
-    const metadata = await fetch(uri).then((response) => response.json());
-    if (!metadata.image) return null;
-    const image = await fetch(metadata.image);
-    if (!image.ok) return null;
-    return Buffer.from(await image.arrayBuffer());
+    const metadata = await fetch(sourceUri).then((response) => response.json());
+    return metadata.image ?? null;
   } catch {
-    // A dead re-host is not a build failure — that NFT keeps imageUrl null,
-    // which is exactly what the API returns for it today.
     return null;
   }
 }
 
-async function writeArt() {
-  if (!existsSync(ASSETS)) {
-    console.warn(`! ${ASSETS} not found — every fixture keeps imageUrl null.`);
-    return 0;
-  }
-
-  let sharp;
-  try {
-    ({ default: sharp } = await import("sharp"));
-  } catch {
-    console.warn("! sharp is not installed — every fixture keeps imageUrl null.");
-    return 0;
-  }
-
-  // Rebuilt wholesale so a shrunk SAMPLE never leaves orphans behind.
-  rmSync(ART_DIR, { recursive: true, force: true });
-  mkdirSync(ART_DIR, { recursive: true });
-
-  let written = 0;
-  for (const nft of nfts) {
-    const input = await artInput(nft);
-    if (!input) continue;
-    // 640px covers the detail hero at 2x on a phone and a grid cell at 2x on a
-    // desktop; the sources are 1080px, more than any layout here asks for.
-    await sharp(input)
-      .resize(640, 640, { fit: "cover" })
-      .webp({ quality: 80 })
-      .toFile(path.join(ART_DIR, `${nft.id}.webp`));
-    nft.imageUrl = `${ART_URL}/${nft.id}.webp`;
-    written += 1;
-  }
-
-  // Deliberately break the last one: a 2021-era link that no longer resolves is
-  // the single most likely real-world state, and it must be visible in review.
-  const dead = [...nfts].reverse().find((nft) => nft.imageUrl !== null);
-  if (dead) dead.imageUrl = DEAD_IMAGE_URL;
-
-  return written;
+/** HEAD every candidate, a few at a time, so imageStatus is observed not assumed. */
+async function checkAll(urls) {
+  const status = new Map();
+  const queue = [...urls];
+  const workers = Array.from({ length: 8 }, async () => {
+    for (let url = queue.pop(); url !== undefined; url = queue.pop()) {
+      try {
+        const response = await fetch(url, { method: "HEAD" });
+        status.set(url, response.ok ? "ok" : "dead");
+      } catch {
+        // No network, or a host that refuses HEAD. "unknown" is the contract's
+        // own word for "not checked", and the UI loads those optimistically.
+        status.set(url, "unknown");
+      }
+    }
+  });
+  await Promise.all(workers);
+  return status;
 }
 
-const artCount = await writeArt();
+// Truncated to the hour so a regeneration produces a tidy diff rather than a
+// new timestamp on every row.
+const NOW = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000);
+const checkedAt = NOW.toISOString();
 
-// Deterministic on-chain history. Every NFT gets its mint event; the first of
-// each collection also gets a transfer and a sale, and a two-owner history.
-const T0 = Date.parse("2026-06-01T00:00:00Z");
+if (!existsSync(ASSETS)) {
+  console.warn(`! ${ASSETS} not found — every fixture keeps imageUri null.`);
+} else {
+  const rehosts = new Map(SAMPLE.map(({ slug }) => [slug, loadRehostMap(slug)]));
+  for (const nft of nfts) {
+    const uri = metadataUriOf(nft);
+    if (!uri) continue;
+    nft.metadataUri = uri;
+    nft.metadataSourceUri = rehosts.get(nft.collectionSlug)?.get(nft.address) ?? uri;
+    nft.imageUri = await imageUriOf(nft.metadataSourceUri, nft.address);
+  }
+  const status = await checkAll(new Set(nfts.map((nft) => nft.imageUri).filter(Boolean)));
+  for (const nft of nfts) {
+    if (!nft.imageUri) continue;
+    nft.imageStatus = status.get(nft.imageUri) ?? "unknown";
+    nft.imageCheckedAt = nft.imageStatus === "unknown" ? null : checkedAt;
+  }
+}
+
+// ------------------------------------------------------ deliberate edge cases
+//
+// Every one of these is a state the real index will contain and the UI has to
+// render. Without them the browse grid is N identical happy paths and the
+// fallbacks ship implemented but unreviewed.
+
+const withArt = nfts.filter((nft) => nft.imageStatus === "ok");
+
+// A 2021-era link that no longer resolves. imageStatus says so, so the card
+// renders the placeholder without ever issuing the request.
+const rotted = withArt.at(-1);
+if (rotted) {
+  rotted.imageUri = DEAD_IMAGE_URL;
+  rotted.imageStatus = "dead";
+  rotted.imageCheckedAt = checkedAt;
+}
+
+// Not yet checked: the contract says load it optimistically, so this one shows
+// the image arriving behind the placeholder rather than instead of it.
+const unchecked = withArt.at(-2);
+if (unchecked) {
+  unchecked.imageStatus = "unknown";
+  unchecked.imageCheckedAt = null;
+}
+
+// Burned. Part of the browse population by contract, greyed rather than hidden,
+// and with no owner — a burned asset has none.
+for (const { slug } of SAMPLE) {
+  const burned = nfts.filter((nft) => nft.collectionSlug === slug).at(-1);
+  if (burned) {
+    burned.burned = true;
+    burned.owner = null;
+  }
+}
+
+// A name the indexer could not parse a number out of: sorts last under
+// sort=number, and the card falls back to the whole name.
+const unnumbered = nfts.find((nft) => nft.collectionSlug === "piggy-gang");
+if (unnumbered) {
+  unnumbered.name = "Genesis Pig";
+  unnumbered.number = null;
+}
+
+// A Core asset whose update authority moved it out of the collection. Still
+// addressable, reports `removed`.
+const removed = nfts.filter((nft) => nft.collectionSlug === "piggy-gang").at(-2);
+if (removed) {
+  removed.membershipStatus = "removed";
+  removed.removedAt = new Date(NOW.getTime() - 5 * 86_400_000).toISOString();
+}
+
+// --------------------------------------------------------------- history
+//
+// Deterministic, and anchored at generation time so the home strip reads as
+// recent activity rather than as an archive. Every asset gets its mint; a
+// spread of them get the fuller history the timeline and the strip need.
+
 const SLOT0 = 344_000_000;
-const at = (day) => new Date(T0 + day * 86_400_000).toISOString();
-const slotAt = (day) => SLOT0 + day * 200_000;
+const ago = (hours) => new Date(NOW.getTime() - hours * 3_600_000).toISOString();
+// Solana lands roughly 8,000 slots an hour; the arithmetic only has to be
+// monotonic with time, which is what the (slot, id) ordering key needs.
+const slotAgo = (hours) => SLOT0 + Math.round((400 * 24 - hours) * 8_000);
 
 const activity = {};
 const ownership = {};
 let sig = 0;
+let eventId = 900_000;
 
-for (const nft of nfts) {
-  const first = nfts.find((n) => n.collectionSlug === nft.collectionSlug) === nft;
-  const events = [
-    {
-      type: "mint",
-      signature: sentinelSignature((sig += 1)),
-      slot: slotAt(0),
-      timestamp: at(0),
-      from: null,
-      to: first ? WALLETS[3] : nft.owner,
-      priceLamports: null,
-      marketplace: null,
-    },
-  ];
-  if (first) {
-    events.push(
-      {
-        type: "transfer",
-        signature: sentinelSignature((sig += 1)),
-        slot: slotAt(30),
-        timestamp: at(30),
-        from: WALLETS[3],
-        to: WALLETS[4],
-        priceLamports: null,
-        marketplace: null,
-      },
-      {
-        type: "sale",
-        signature: sentinelSignature((sig += 1)),
-        slot: slotAt(60),
-        timestamp: at(60),
-        from: WALLETS[4],
-        to: nft.owner,
-        priceLamports: 2_500_000_000,
-        marketplace: "Magic Eden",
-      },
+const nextEvent = (kind, hours, extra) => ({
+  id: String((eventId += 7)),
+  kind,
+  signature: sentinelSignature((sig += 1)),
+  seq: 0,
+  slot: slotAgo(hours),
+  blockTime: ago(hours),
+  fromOwner: null,
+  toOwner: null,
+  priceLamports: null,
+  marketplace: null,
+  ...extra,
+});
+
+const interval = (owner, fromHours, toHours, openedBy, closedBy) => ({
+  owner,
+  fromSlot: slotAgo(fromHours),
+  fromTs: ago(fromHours),
+  toSlot: toHours === null ? null : slotAgo(toHours),
+  toTs: toHours === null ? null : ago(toHours),
+  isCurrent: toHours === null,
+  openedBySignature: openedBy,
+  closedBySignature: closedBy,
+});
+
+nfts.forEach((nft, index) => {
+  // Mints spread across a year so sort=number and sort=activity disagree, which
+  // is the only way an activity sort is reviewable at all.
+  const mintedHours = 24 * (365 - ((index * 37) % 365));
+  const events = [];
+  const intervals = [];
+  const mintedTo = nft.owner ?? WALLETS[3];
+
+  const mint = nextEvent("mint", mintedHours, { toOwner: mintedTo });
+  events.push(mint);
+
+  const rich = index % 9 === 0;
+  const busy = index % 3 === 0;
+
+  if (nft.burned) {
+    const burnedHours = Math.max(1, mintedHours - 24 * 30);
+    const burn = nextEvent("burn", burnedHours, { fromOwner: mintedTo });
+    events.push(burn);
+    intervals.push(interval(mintedTo, mintedHours, burnedHours, mint.signature, burn.signature));
+  } else if (rich) {
+    const midHours = Math.round(mintedHours / 2);
+    const recentHours = 1 + (index % 40);
+    const via = WALLETS[1 + (index % (WALLETS.length - 1))];
+    const transfer = nextEvent("transfer", midHours, { fromOwner: mintedTo, toOwner: via });
+    const sale = nextEvent("sale", recentHours, {
+      fromOwner: via,
+      toOwner: nft.owner,
+      // Lamports as a decimal string: the full u64 range round-trips exactly and
+      // nobody divides by 1e9 in floating point.
+      priceLamports: String(1_250_000_000 + index * 37_000_000),
+      marketplace: index % 2 === 0 ? "Tensor" : "Magic Eden",
+    });
+    events.push(transfer, sale);
+    intervals.push(
+      interval(nft.owner, recentHours, null, sale.signature, null),
+      interval(via, midHours, recentHours, transfer.signature, sale.signature),
+      interval(mintedTo, mintedHours, midHours, mint.signature, transfer.signature),
     );
-    ownership[nft.id] = [
-      {
-        owner: nft.owner,
-        fromSlot: slotAt(60),
-        fromTimestamp: at(60),
-        toSlot: null,
-        toTimestamp: null,
-      },
-      {
-        owner: WALLETS[4],
-        fromSlot: slotAt(30),
-        fromTimestamp: at(30),
-        toSlot: slotAt(60),
-        toTimestamp: at(60),
-      },
-      {
-        owner: WALLETS[3],
-        fromSlot: slotAt(0),
-        fromTimestamp: at(0),
-        toSlot: slotAt(30),
-        toTimestamp: at(30),
-      },
-    ];
+  } else if (busy) {
+    const recentHours = 2 + (index % 60);
+    const transfer = nextEvent("transfer", recentHours, {
+      fromOwner: mintedTo,
+      toOwner: nft.owner,
+    });
+    events.push(transfer);
+    intervals.push(
+      interval(nft.owner, recentHours, null, transfer.signature, null),
+      interval(mintedTo, mintedHours, recentHours, mint.signature, transfer.signature),
+    );
   } else {
-    ownership[nft.id] = [
-      {
-        owner: nft.owner,
-        fromSlot: slotAt(0),
-        fromTimestamp: at(0),
-        toSlot: null,
-        toTimestamp: null,
-      },
-    ];
+    intervals.push(interval(nft.owner, mintedHours, null, mint.signature, null));
   }
-  // Newest first, per the contract.
-  activity[nft.id] = events.reverse();
+
+  // Newest first, per the contract's (slot, id) descending order.
+  events.sort((a, b) => b.slot - a.slot);
+  activity[nft.address] = events;
+  ownership[nft.address] = intervals;
+  nft.lastActivityAt = events[0].blockTime;
+  nft.updatedAt = checkedAt;
+});
+
+// An asset the indexer has classified but never seen move. A null
+// lastActivityAt sorts first under sort=activity, per the contract.
+const quiet = nfts.filter((nft) => !nft.burned).at(-3);
+if (quiet) {
+  activity[quiet.address] = [];
+  quiet.lastActivityAt = null;
+}
+
+// A kind outside the four v1 serves. The contract reserves stake/unstake/other
+// and requires clients to render an unrecognised kind as a generic timeline
+// entry rather than crash, so exactly one fixture exercises that branch.
+const staked = nfts.find(
+  (nft) => !nft.burned && activity[nft.address] && activity[nft.address].length === 1,
+);
+if (staked) {
+  activity[staked.address].unshift(
+    nextEvent("stake", 6, { fromOwner: staked.owner, toOwner: staked.owner }),
+  );
+  staked.lastActivityAt = activity[staked.address][0].blockTime;
+}
+
+// ------------------------------------------------------------------- stats
+//
+// Derived from the fixtures rather than copied from the spec's examples. The
+// new contract makes CollectionStats.indexed the unfiltered browse count and
+// FacetsResponse.total the filtered one, so a headline that disagreed with the
+// grid would make the toolbar lie. A reviewer sees the fixture's own supply,
+// not the real collection's — internal consistency catches UI bugs and
+// verisimilitude catches none.
+
+const hoursSince = (iso) => (NOW.getTime() - Date.parse(iso)) / 3_600_000;
+
+for (const { slug, standard } of SAMPLE) {
+  const rows = nfts.filter((nft) => nft.collectionSlug === slug);
+  const live = rows.filter((nft) => !nft.burned);
+  const owners = new Map();
+  for (const nft of live) {
+    if (nft.owner) owners.set(nft.owner, (owners.get(nft.owner) ?? 0) + 1);
+  }
+  const events = rows.flatMap((nft) => activity[nft.address] ?? []);
+  const bucket = (label, min, max) => {
+    const held = [...owners.values()].filter((n) => n >= min && (max === null || n <= max));
+    return {
+      label,
+      minCount: min,
+      maxCount: max,
+      holders: held.length,
+      assets: held.reduce((total, n) => total + n, 0),
+    };
+  };
+  const times = events.map((event) => event.blockTime).sort();
+
+  collections.push({
+    slug,
+    name: DISPLAY_NAME[slug],
+    standard,
+    membershipRule: MEMBERSHIP_RULE[slug],
+    address: COLLECTION_ADDRESS[slug],
+    symbol: SYMBOL[slug],
+    imageUrl: null,
+    stats: {
+      supply: live.length,
+      holders: owners.size,
+      burned: rows.length - live.length,
+      indexed: rows.length,
+      activity24h: events.filter((event) => hoursSince(event.blockTime) <= 24).length,
+      activity7d: events.filter((event) => hoursSince(event.blockTime) <= 24 * 7).length,
+      lastActivityAt: times.length > 0 ? times[times.length - 1] : null,
+      holderDistribution: [bucket("1", 1, 1), bucket("2-5", 2, 5), bucket("6+", 6, null)],
+      asOf: checkedAt,
+    },
+  });
+}
+
+// Cheap arithmetic guards. These are the invariants the contract states in
+// prose, and a fixture set that broke one would send the UI chasing a bug that
+// was never in the UI.
+for (const collection of collections) {
+  const { supply, burned, indexed, holderDistribution } = collection.stats;
+  if (indexed !== supply + burned) {
+    throw new Error(`${collection.slug}: indexed must equal supply + burned`);
+  }
+  const held = holderDistribution.reduce((total, cohort) => total + cohort.assets, 0);
+  if (held !== supply) {
+    throw new Error(`${collection.slug}: holder cohorts hold ${held}, supply is ${supply}`);
+  }
 }
 
 // ---------------------------------------------------------------- emit
 
 const banner = `// GENERATED by scripts/gen-fixtures.mjs — do not edit by hand.
 // Real mints and trait combinations sampled from the dressme repo's committed
-// indexes; owners, signatures and Core asset ids are synthetic sentinels.
+// indexes; owners, signatures, rarity ranks and Core asset ids are synthetic
+// sentinels. Stats describe THIS fixture set, not the real collections.
 `;
 
 mkdirSync(OUT, { recursive: true });
@@ -383,7 +622,7 @@ emit(
   "collections.ts",
   `import type { components } from "@/lib/api/schema";
 
-export const COLLECTIONS = ${json(collections)} satisfies components["schemas"]["CollectionWithStats"][];
+export const COLLECTIONS = ${json(collections)} satisfies components["schemas"]["Collection"][];
 `,
 );
 
@@ -393,9 +632,16 @@ emit(
 
 export const DEMO_WALLET = ${json(DEMO_WALLET)};
 
-// The embedded collection object is joined in from COLLECTIONS at serve time
-// rather than duplicated 46 times here.
-export const NFTS = ${json(nfts)} satisfies Omit<components["schemas"]["NftDetail"], "collection">[];
+/**
+ * The embedded collection ref is joined in from COLLECTIONS at serve time
+ * rather than duplicated on every row, and ownership / mint / activitySummary
+ * are derived at serve time from ACTIVITY and OWNERSHIP — so an NFT's detail
+ * panel can never disagree with its own timeline.
+ */
+export const NFTS = ${json(nfts)} satisfies (Omit<
+  components["schemas"]["NftDetail"],
+  "collection" | "ownership" | "mint" | "activitySummary"
+> & { collectionSlug: string })[];
 `,
 );
 
@@ -405,8 +651,13 @@ emit(
 
 export const ACTIVITY = ${json(activity)} satisfies Record<string, components["schemas"]["ActivityEvent"][]>;
 
-export const OWNERSHIP = ${json(ownership)} satisfies Record<string, components["schemas"]["OwnershipRecord"][]>;
+export const OWNERSHIP = ${json(ownership)} satisfies Record<string, components["schemas"]["OwnershipInterval"][]>;
 `,
 );
 
-console.log(`wrote %s demo art files to public/piggy/nft`, artCount);
+console.log(
+  "%d assets across %d collections; %d with a reachable image",
+  nfts.length,
+  collections.length,
+  nfts.filter((nft) => nft.imageStatus === "ok").length,
+);

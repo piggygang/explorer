@@ -14,7 +14,7 @@ const LINK =
 const NOTE = "mt-3 text-[11px] text-ink-muted";
 
 export function ActionLinks({ nft }: { nft: NftDetail }) {
-  const marketplace = nft.burned ? null : marketplaceHref(nft.collectionSlug);
+  const marketplace = nft.burned ? null : marketplaceHref(nft.collection.slug);
 
   return (
     <section aria-label="Links" className={PANEL}>
@@ -26,11 +26,11 @@ export function ActionLinks({ nft }: { nft: NftDetail }) {
           </a>
         )}
         {!nft.burned && (
-          <a href={tensorHref(nft.id)} target="_blank" rel="noreferrer" className={LINK}>
+          <a href={tensorHref(nft.address)} target="_blank" rel="noreferrer" className={LINK}>
             Tensor ↗
           </a>
         )}
-        <a href={dressHref(nft.collectionSlug)} target="_blank" rel="noreferrer" className={LINK}>
+        <a href={dressHref(nft.collection.slug)} target="_blank" rel="noreferrer" className={LINK}>
           Dress a piggy ↗
         </a>
       </div>

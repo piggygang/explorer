@@ -110,7 +110,15 @@ export default async function CollectionPage(props: PageProps<"/collections/[slu
             </Link>
           </div>
 
-          {collection && (
+          {/* Collection.stats is nullable — short-TTL cached aggregates the
+              server may answer without — so the band disappears rather than
+              printing four zeroes, which would be a claim about the chain.
+
+              Supply excludes burned assets while the grid below includes them,
+              which is the contract's own split (stats.indexed is the browse
+              count). Surfacing indexed here is ALG-638's call, not a rename to
+              make in passing. */}
+          {collection?.stats && (
             <dl className={BAND}>
               <Stat label="Supply" value={collection.stats.supply} />
               <Stat label="Holders" value={collection.stats.holders} />

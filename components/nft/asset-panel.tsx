@@ -12,9 +12,17 @@ export function AssetPanel({ nft }: { nft: NftDetail }) {
   return (
     <section aria-label="Asset" className={PANEL}>
       <h2 className={EYEBROW}>{nft.standard === "core" ? "Core asset" : "Mint"}</h2>
-      <AddressActions address={nft.id} kind="mint" />
-      {nft.metadataUri !== null && (
-        <a href={nft.metadataUri} target="_blank" rel="noreferrer" className={LINK}>
+      <AddressActions address={nft.address} kind="mint" />
+      {/* metadataUri is what the chain records and "may point at a dead host";
+          metadataSourceUri is "the link that still resolves". Linking the first
+          when the second exists would be knowingly shipping a broken link. */}
+      {(nft.metadataSourceUri ?? nft.metadataUri) !== null && (
+        <a
+          href={nft.metadataSourceUri ?? nft.metadataUri ?? undefined}
+          target="_blank"
+          rel="noreferrer"
+          className={LINK}
+        >
           Metadata ↗
         </a>
       )}
