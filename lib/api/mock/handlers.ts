@@ -3,6 +3,12 @@ import { COLLECTIONS } from "@/lib/api/fixtures/collections";
 import { NFTS } from "@/lib/api/fixtures/nfts";
 import { ACTIVITY, OWNERSHIP } from "@/lib/api/fixtures/activity";
 import { decodeCursor, encodeCursor, scopeOf } from "@/lib/api/mock/cursor";
+import {
+  MAX_QUERY_LENGTH,
+  MAX_TRAIT_TYPES,
+  MAX_TRAIT_VALUE_LENGTH,
+  MAX_TRAIT_VALUES,
+} from "@/lib/api/params";
 
 type Schemas = components["schemas"];
 type Row = (typeof NFTS)[number];
@@ -57,6 +63,51 @@ function traitFilters(params: URLSearchParams): Record<string, string[]> | null 
   }
   return filters;
 }
+
+/**
+ * The contract's caps on a trait filter: "At most 16 distinct trait types and 64
+ * values per request", `maxItems: 64` per type, and a value of 1 to 128
+ * characters. Over them is `400 invalid_parameter` on BOTH paths — /facets
+ * declares no 422 at all, and TraitFilter carries no escalation instruction the
+ * way Limit does. (A second line for the indexer team beside the one below: is
+ * an over-cap trait filter 400 or 422 on /nfts, which does declare a 422?)
+ */
+function capsExceeded(filters: Record<string, string[]>, params: URLSearchParams): string | null {
+  if (Object.keys(filters).length > MAX_TRAIT_TYPES) {
+    return `at most ${MAX_TRAIT_TYPES} trait types per request`;
+  }
+  const values = Object.values(filters).reduce((total, list) => total + list.length, 0);
+  if (values > MAX_TRAIT_VALUES) return `at most ${MAX_TRAIT_VALUES} trait values per request`;
+  for (const list of Object.values(filters)) {
+    for (const value of list) {
+      if (value.length < 1 || value.length > MAX_TRAIT_VALUE_LENGTH) {
+        return `a trait value is 1 to ${MAX_TRAIT_VALUE_LENGTH} characters`;
+      }
+    }
+  }
+  const q = params.get("q");
+  if (q !== null && q.length > MAX_QUERY_LENGTH) return `q is at most ${MAX_QUERY_LENGTH} characters`;
+  return null;
+}
+
+/**
+ * Every trait type this collection's metadata carries, facetable or not — the
+ * dictionary a filter key is matched against. A key outside it is what the
+ * contract calls an unknown trait TYPE, whose answer is an empty result set and
+ * `facets: []` rather than any kind of 4xx.
+ */
+function traitDictionary(slug: string): Set<string> {
+  const types = new Set<string>();
+  for (const nft of population(slug)) {
+    for (const attribute of nft.attributes) types.add(attribute.traitType);
+  }
+  return types;
+}
+
+const hasUnknownTraitType = (slug: string, filters: Record<string, string[]>) => {
+  const dictionary = traitDictionary(slug);
+  return Object.keys(filters).some((traitType) => !dictionary.has(traitType));
+};
 
 /**
  * The contract bounds `limit` at 1..100 with a default of 24 and says exceeding
@@ -292,6 +343,8 @@ export function browseCollectionNfts(slug: string, params: URLSearchParams): Res
   }
   const filters = traitFilters(params);
   if (!filters) return invalidParameter("malformed trait filter");
+  const overCap = capsExceeded(filters, params);
+  if (overCap) return invalidParameter(overCap);
 
   // A cursor is bound to the sort and filter set that issued it, so paging on
   // after a filter change is a recoverable 400 rather than a silently wrong page.
@@ -310,6 +363,17 @@ export function getCollectionFacets(slug: string, params: URLSearchParams): Resp
   if (!collectionOf(slug)) return notFound(`no collection "${slug}"`);
   const filters = traitFilters(params);
   if (!filters) return invalidParameter("malformed trait filter");
+  const overCap = capsExceeded(filters, params);
+  if (overCap) return invalidParameter(overCap);
+
+  // An unknown trait type is 200 with nothing, never a 4xx — the contract says
+  // so three times, so a bookmarked filter URL survives a metadata refresh. It
+  // has to be an early return: deriving the type list from the population would
+  // otherwise answer with every trait type carrying an empty values array, which
+  // is a shape the real API never produces and a UI could quietly rely on.
+  if (hasUnknownTraitType(slug, filters)) {
+    return ok({ total: 0, facets: [] } satisfies Schemas["FacetsResponse"]);
+  }
 
   // Only facetable trait types appear: a collection's facet_exclude removes the
   // per-asset-unique ones, which the fixtures carry as attribute.isFacet.

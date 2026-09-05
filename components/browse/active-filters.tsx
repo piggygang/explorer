@@ -12,6 +12,13 @@ import {
  * filter narrowing the grid is visible and reversible rather than an invisible
  * one arriving from a bookmarked URL.
  *
+ * It sits above the grid rather than inside the sticky bar: its height varies
+ * with the number of chips, and the filter rail's sticky offset is derived from
+ * that bar being a fixed one row.
+ *
+ * Every chip preserves scroll except "Clear all", which has nothing to stay
+ * beside — removing the last filter unmounts the row itself.
+ *
  * It reads params, never facets, so a chip for a facet-excluded trait type that
  * arrives via URL is still removable even though no tab for it exists.
  */
@@ -32,7 +39,7 @@ export function ActiveFilters({ slug, params }: { slug: string; params: BrowsePa
     values.map((value) => ({
       key: `${traitType}:${value}`,
       label: `${traitType} · ${value}`,
-      open: openSheetHref(slug, params, traitType),
+      open: openSheetHref(slug, params),
       remove: toggleTraitHref(slug, params, traitType, value),
       removeLabel: `Remove ${traitType} ${value}`,
     })),
@@ -44,10 +51,15 @@ export function ActiveFilters({ slug, params }: { slug: string; params: BrowsePa
     <div className={ROW}>
       {chips.map((chip) => (
         <span key={chip.key} className={CHIP}>
-          <Link href={chip.open} className={LABEL}>
+          <Link href={chip.open} scroll={false} className={LABEL}>
             {chip.label}
           </Link>
-          <Link href={chip.remove} aria-label={chip.removeLabel} className={REMOVE}>
+          <Link
+            href={chip.remove}
+            aria-label={chip.removeLabel}
+            scroll={false}
+            className={REMOVE}
+          >
             <span aria-hidden="true">✕</span>
           </Link>
         </span>
@@ -56,7 +68,12 @@ export function ActiveFilters({ slug, params }: { slug: string; params: BrowsePa
       {params.q && (
         <span className={CHIP}>
           <span className={`${LABEL} text-ink-muted`}>Search · {params.q}</span>
-          <Link href={dropQueryHref(slug, params)} aria-label="Remove search" className={REMOVE}>
+          <Link
+            href={dropQueryHref(slug, params)}
+            aria-label="Remove search"
+            scroll={false}
+            className={REMOVE}
+          >
             <span aria-hidden="true">✕</span>
           </Link>
         </span>
