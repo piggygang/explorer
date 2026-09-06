@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/empty-state";
 import { NftCard } from "@/components/nft-card";
 import { BrowseGrid } from "@/components/browse/browse-grid";
 import { BrowseToolbar, FILTER_TRIGGER_ID } from "@/components/browse/browse-toolbar";
+import { CollectionSearch } from "@/components/browse/collection-search";
 import { FacetPanel } from "@/components/browse/facet-panel";
 import { FilterSheet } from "@/components/browse/filter-sheet";
 import { ApiError, browseCollectionNfts, getCollectionFacets } from "@/lib/api/client";
@@ -47,7 +48,20 @@ const DONE =
   "rounded-full bg-brand px-6 py-3.5 text-center text-base font-semibold text-canvas transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 const SHEET_COUNT = "text-center text-[11px] text-ink-muted";
 
-export async function BrowseResults({ slug, params }: { slug: string; params: BrowseParams }) {
+export async function BrowseResults({
+  slug,
+  name,
+  params,
+}: {
+  slug: string;
+  /** The collection's display name, only ever used to NAME the two search
+      landmarks this page now carries. Threaded from the page rather than looked
+      up here: lib/collections.ts holds presentation, not names, and a second
+      getCollection call to recover one the page already has would be a round trip
+      for a string. */
+  name: string;
+  params: BrowseParams;
+}) {
   const [page, facets] = await Promise.all([
     browseCollectionNfts(slug, {
       trait: params.trait,
@@ -87,6 +101,7 @@ export async function BrowseResults({ slug, params }: { slug: string; params: Br
     <>
       <BrowseToolbar
         slug={slug}
+        name={name}
         params={params}
         total={facetData?.total ?? null}
         shown={nfts.length}
@@ -94,6 +109,12 @@ export async function BrowseResults({ slug, params }: { slug: string; params: Br
       />
 
       <div className={`${CONTAINER} pt-4`}>
+        {/* Below lg the toolbar has no room for a fourth control — and its
+            one-row height is what lib/browse-layout.ts's rail offset is derived
+            from — so the narrow copy lives here, in the block that is allowed to
+            grow. Only ever one of the two is displayed, so the duplicate
+            landmark is never in the accessibility tree twice. */}
+        <CollectionSearch slug={slug} name={name} params={params} className="mb-3 lg:hidden" />
         <ActiveFilters slug={slug} params={params} />
       </div>
 

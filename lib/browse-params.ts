@@ -143,6 +143,45 @@ export function dropQueryHref(slug: string, params: BrowseParams): string {
   return build(slug, { ...params, q: undefined });
 }
 
+/**
+ * The "deep results belong on the browse page with `?q=`" link a search group
+ * renders — the contract's own words for what a capped preview hands off to.
+ *
+ * Drops sort and traits deliberately: a reader arriving from global search has
+ * no collection-local state to preserve, and carrying an empty selection would
+ * only make the URL longer.
+ *
+ * Be careful about what this link promises. Browse's `q` is three OR'd
+ * predicates (address prefix, exact number, name substring) while search's is
+ * exclusive branches, so the two answer the same string differently — `#1` is
+ * one hit per collection in search and 32 rows here. Callers label it "browse
+ * all matches" and never restate the group's total.
+ */
+export function collectionSearchHref(slug: string, q: string): string {
+  return build(slug, { trait: {}, q });
+}
+
+/**
+ * The current selection as hidden form fields.
+ *
+ * A native GET form serializes only its OWN fields and throws the rest of the
+ * query string away, so an in-collection search box has to re-emit everything
+ * the URL already carries or submitting it would silently clear the filters.
+ *
+ * Byte-identical to what build() writes — keep the two adjacent. `q` is excluded
+ * because the visible input carries it, and `filters` is excluded because
+ * submitting a search should close the drawer, which is what closeSheetHref
+ * already means.
+ */
+export function browseHiddenFields(params: BrowseParams): { name: string; value: string }[] {
+  const fields: { name: string; value: string }[] = [];
+  for (const [type, values] of Object.entries(params.trait)) {
+    for (const value of values) fields.push({ name: `trait[${type}]`, value });
+  }
+  if (params.sort) fields.push({ name: "sort", value: params.sort });
+  return fields;
+}
+
 /** Selected trait values plus the search, which is what the Filters badge counts. */
 export function activeCount(params: BrowseParams): number {
   return traitCount(params) + (params.q ? 1 : 0);

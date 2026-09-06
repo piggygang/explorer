@@ -9,6 +9,7 @@ import {
   getWalletPortfolio,
   listCollections,
   notFound,
+  search,
 } from "./handlers";
 
 /**
@@ -63,11 +64,14 @@ export async function dispatchMock(
   if (resource === "wallets" && rest === 4 && second === "nfts") {
     return getWalletPortfolio(first, params);
   }
+  // The length check keeps /v1/search/anything a 404 like every other unknown path.
+  if (resource === "search" && rest === 2) return search(params);
 
-  // /v1/search is ALG-634's and /v1/collections/{slug}/holders is ALG-638's.
-  // Nothing in this app calls either, and a mock that answered them would be
-  // inventing the very rankings those issues exist to design. `pnpm mock:prism`
-  // does serve both from the contract's examples — the one place the two mocks
-  // deliberately differ.
+  // /v1/collections/{slug}/holders is ALG-638's. Nothing calls it, and a mock
+  // that answered would be inventing the very ranking that issue exists to
+  // design — and unlike /v1/search, holders DECLARES a 404, so answering one
+  // here is a shape the contract admits. `pnpm mock:prism` serves it from the
+  // contract's examples: the one endpoint where the two mocks deliberately
+  // differ about whether a request is answerable at all.
   return notFound(`no route for ${pathname || "/"}`);
 }

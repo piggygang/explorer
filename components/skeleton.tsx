@@ -108,6 +108,35 @@ export function WalletGroupsSkeleton({ groups = 2 }: { groups?: number }) {
   );
 }
 
+/**
+ * The palette's in-flight state. Reproduces components/search/result-row.tsx's
+ * geometry class for class, so the swap costs no layout shift.
+ *
+ * Rows rather than a spinner, and not for taste: a spinner needs a keyframe, and
+ * this file's motion-safe:animate-pulse is the only animation the house allows.
+ *
+ * No LoadingStatus wrapper — the palette already owns exactly one role="status"
+ * region and a second would double-announce every keystroke.
+ */
+export function SearchRowsSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <ul aria-hidden="true" className="flex flex-col gap-0.5">
+      {Array.from({ length: rows }, (_, index) => (
+        <li
+          key={index}
+          className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 px-2.5 py-2"
+        >
+          <Skeleton className="h-8 w-8 !rounded-md" />
+          <span className="flex flex-col gap-1.5">
+            <SkeletonLine w="w-20" />
+            <SkeletonLine w="w-28" />
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** The sr-only sentence that gives every skeleton region its meaning. */
 export function LoadingStatus({ children }: { children: string }) {
   return (

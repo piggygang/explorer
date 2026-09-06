@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import Link from "next/link";
 import { NftImage } from "@/components/nft-image";
 import type { NftSummary } from "@/lib/api/client";
-import { number } from "@/lib/format";
+import { nftLabel, number } from "@/lib/format";
 import { presentation } from "@/lib/collections";
 
 /**
@@ -53,10 +53,10 @@ export function NftCard({
 }) {
   const accent = { "--accent": presentation(nft.collection.slug).accent } as CSSProperties;
 
-  // Core assets are named a bare "#1"; token_metadata ones carry the collection
-  // name too. Leading with the number keeps a grid of 24 from repeating that
-  // name, and falls back to it when the name carried no number to parse.
-  const label = nft.number === null ? nft.name : `#${number(nft.number)}`;
+  // The rule lives in lib/format.ts now: the palette row renders the same label
+  // at a different density, and a second copy of it here is how the two would
+  // start disagreeing about `Genesis Pig` and piggy-gang's bare `#2`.
+  const label = nftLabel(nft.name, nft.number);
 
   return (
     <Link

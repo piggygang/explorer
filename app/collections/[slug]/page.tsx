@@ -130,7 +130,7 @@ export default async function CollectionPage(props: PageProps<"/collections/[slu
         {collection ? (
           <div style={accent}>
             <Suspense fallback={<BrowseSkeleton />}>
-              <BrowseResults slug={slug} params={params} />
+              <BrowseResults slug={slug} name={display.name} params={params} />
             </Suspense>
           </div>
         ) : (
