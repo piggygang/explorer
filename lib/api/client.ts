@@ -1,7 +1,7 @@
 import createClient from "openapi-fetch";
 import type { components, paths } from "@/lib/api/schema";
 import { dispatchMock } from "@/lib/api/mock/dispatch";
-import { BROWSE_LIMIT } from "@/lib/api/params";
+import { BROWSE_LIMIT, SEARCH_LIMIT } from "@/lib/api/params";
 import type { Sort, TraitSelection } from "@/lib/api/params";
 
 type Schemas = components["schemas"];
@@ -27,6 +27,13 @@ export type Facet = Schemas["Facet"];
 export type FacetsResponse = Schemas["FacetsResponse"];
 export type ImageStatus = Schemas["ImageStatus"];
 export type WalletPortfolio = Schemas["WalletPortfolio"];
+/** All four, not just the envelope: the row builder and the result components
+    take a group and a route as separate props, and a component typed
+    `SearchResponse["groups"][number]` stops compiling the day the envelope moves. */
+export type SearchResponse = Schemas["SearchResponse"];
+export type SearchGroup = Schemas["SearchGroup"];
+export type SearchRoute = Schemas["SearchRoute"];
+export type WalletHit = Schemas["WalletHit"];
 
 /**
  * Every paginated envelope in v1 has exactly this shape. There is no `total`
@@ -278,5 +285,32 @@ export async function getWalletPortfolio(
     ...CACHE,
   });
   if (!data) fail(response.status, error, `getWalletPortfolio(${address})`);
+  return data;
+}
+
+/**
+ * Global smart search. `q` is positional because it is the only REQUIRED query
+ * parameter in the whole document — the same shape getCollection(slug) and
+ * getWalletPortfolio(address, options) take for their required path segment.
+ *
+ * `limit` here is search's own (1..25, default 10, per collection group), not
+ * components/parameters/Limit's 1..100/24, which is why it comes from
+ * SEARCH_LIMIT rather than BROWSE_LIMIT.
+ *
+ * NO 404 branch, for getWalletPortfolio's reason restated from search's own
+ * description: "anything else resolves to nothing — 200 with an empty result,
+ * never 404". The endpoint declares 200, 304, 400, 429 and 500 and nothing else,
+ * so a 404 from a real deployment is a broken deployment, not an empty result,
+ * and it should surface as one.
+ */
+export async function search(
+  q: string,
+  options: { collection?: string; limit?: number } = {},
+): Promise<SearchResponse> {
+  const { data, error, response } = await api().GET("/v1/search", {
+    params: { query: { q, ...options, limit: options.limit ?? SEARCH_LIMIT } },
+    ...CACHE,
+  });
+  if (!data) fail(response.status, error, "search");
   return data;
 }

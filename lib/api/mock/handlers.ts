@@ -5,9 +5,11 @@ import { ACTIVITY, OWNERSHIP } from "@/lib/api/fixtures/activity";
 import { decodeCursor, encodeCursor, scopeOf } from "@/lib/api/mock/cursor";
 import {
   MAX_QUERY_LENGTH,
+  MAX_SEARCH_LIMIT,
   MAX_TRAIT_TYPES,
   MAX_TRAIT_VALUE_LENGTH,
   MAX_TRAIT_VALUES,
+  SEARCH_LIMIT,
 } from "@/lib/api/params";
 
 type Schemas = components["schemas"];
@@ -122,6 +124,60 @@ function limitOf(params: URLSearchParams): number | null {
   return Number.isInteger(limit) && limit >= 1 && limit <= 100 ? limit : null;
 }
 
+/**
+ * /v1/search's limit, which is NOT limitOf's. The endpoint inlines its own
+ * schema — 1..25, default 10, counted per collection group — where every other
+ * path $refs components/parameters/Limit at 1..100 default 24. Reusing limitOf
+ * here would accept `?limit=60` (a contract 400) and default to 24 (a contract
+ * 10), and `satisfies` cannot catch either: both are perfectly valid integers.
+ */
+function searchLimitOf(params: URLSearchParams): number | null {
+  if (!params.has("limit")) return SEARCH_LIMIT;
+  const limit = Number(params.get("limit"));
+  return Number.isInteger(limit) && limit >= 1 && limit <= MAX_SEARCH_LIMIT ? limit : null;
+}
+
+/**
+ * components/schemas/Address's own pattern, used here as a SHAPE test rather
+ * than a lookup test: the contract's `nothing` example answers an address-shaped
+ * input with `interpretedAs: address` and everything null, so search's address
+ * branch is TERMINAL — an unresolved address never falls through to a text
+ * search.
+ *
+ * KNOWN FIXTURE DEFECT, deferred on purpose. Three piggy-gang sentinel ids embed
+ * the digit 0, which base58 excludes: CoreAsset10x…, CoreAsset20x… and
+ * CoreAsset30x… (the burned demo row). They fail this test, so pasting one
+ * answers "nothing indexed" for an asset /v1/nfts/{id} does serve. They are
+ * already invalid against components/parameters/NftId, so the fix belongs in
+ * scripts/gen-fixtures.mjs — whose rerun re-stamps every timestamp in all three
+ * fixture files and would swamp a search diff. Use CoreAsset29x… (the `removed`
+ * row, valid base58) to exercise the burned/removed mint path instead.
+ */
+const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+/** components/parameters/CollectionSlug's pattern, for search's own `collection`. */
+const SEARCH_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+/**
+ * "exact token number, when the input looks like `#N` or `N`" — components/parameters/Q's
+ * own definition, which the search endpoint's `#N` shorthand narrows but does not
+ * contradict. null = this input is not a number.
+ *
+ * Number.isSafeInteger and an explicit digit test, deliberately NOT the bare
+ * Number() that matchesQuery uses: Number() reads `1e3`, `0x10` and `+5` as
+ * numbers, and none of those looks like `#N` or `N`. matchesQuery is left
+ * BYTE-IDENTICAL rather than sharing this — tightening it would change the
+ * behaviour of a browse page that shipped in ALG-633, which is not a change to
+ * make inside a search issue. The divergence is real and deliberate: `?q=1e3`
+ * matches #1000 on /nfts and is a name substring here.
+ */
+function tokenNumber(raw: string): number | null {
+  const digits = /^#?(\d+)$/.exec(raw);
+  if (!digits) return null;
+  const value = Number(digits[1]);
+  return Number.isSafeInteger(value) ? value : null;
+}
+
 function page<T>(items: T[], limit: number, offset: number, scope: string) {
   const next = offset + limit;
   const hasMore = next < items.length;
@@ -165,6 +221,21 @@ function matchesQuery(nft: Row, raw: string): boolean {
 function population(slug: string): Row[] {
   return NFTS.filter(
     (nft) => nft.collectionSlug === slug && nft.membershipStatus === "member",
+  );
+}
+
+/**
+ * What a wallet holds. Extracted from getWalletPortfolio so search's wallet
+ * branch counts the SAME population the page it routes to renders — a
+ * WalletHit.totalCount of 20 above a portfolio showing 18 is exactly the class
+ * of divergence the mock exists to make impossible.
+ *
+ * Narrower than population(): burned assets have no owner, so they never appear
+ * in a portfolio, while browse includes them and greys the cards out.
+ */
+function heldBy(address: string): Row[] {
+  return NFTS.filter(
+    (nft) => nft.owner === address && nft.membershipStatus === "member" && !nft.burned,
   );
 }
 
@@ -490,10 +561,7 @@ export function getWalletPortfolio(address: string, params: URLSearchParams): Re
   const offset = decodeCursor(params.get("cursor"), scope);
   if (offset === null) return invalidCursor("this cursor was issued for a different collection");
 
-  // Burned assets have no owner, so they never appear in a portfolio.
-  const held = NFTS.filter(
-    (nft) => nft.owner === address && nft.membershipStatus === "member" && !nft.burned,
-  );
+  const held = heldBy(address);
 
   const collections = COLLECTIONS.flatMap((collection) => {
     const count = held.filter((nft) => nft.collectionSlug === collection.slug).length;
@@ -518,4 +586,164 @@ export function getWalletPortfolio(address: string, params: URLSearchParams): Re
       return { data: data.map(toSummary), nextCursor, hasMore };
     })(),
   } satisfies Schemas["WalletPortfolio"]);
+}
+
+/**
+ * GET /v1/search — one box that understands what is pasted into it.
+ *
+ * THE BRANCHES ARE EXCLUSIVE, and in the contract's own order. Its description
+ * reads "A base58 address resolves by lookup … Anything else is text: `#N`
+ * matches the token number, OTHERWISE a case-insensitive substring of the name".
+ * The `byNumber` example settles it: `"#1"` against a collection of thousands
+ * comes back with `total: 1`, which only holds if the number branch does not
+ * also substring-match `#1` into `#10`, `#100` and the rest.
+ *
+ * This is a different `q` from the one browse takes, and deliberately so — the
+ * endpoint inlines its own `q` schema rather than $ref-ing components/parameters/Q,
+ * whose three OR'd predicates (address PREFIX, exact number, name substring) is
+ * a wider net. Against these fixtures `#1` is one hit per collection here and 32
+ * rows on /nfts. lib/browse-params.ts's collectionSearchHref carries the note.
+ *
+ * NOT FUZZY, and the mock must never become fuzzy: the contract says outright
+ * "`Pnk` does not find `Pink`". A mock that scored similarity would let the UI
+ * build on a ranking the real API cannot produce, and SearchGroup is
+ * `additionalProperties: false`, so a server could not even carry a score
+ * without a contract change.
+ *
+ * ERRORS. /v1/search declares exactly 200, 304, 400, 429 and 500 — so 422 is
+ * unavailable (only /v1/collections/{slug}/nfts declares one) and 404 is
+ * unavailable and ruled out in prose. Every schema violation is therefore 400
+ * invalid_parameter, justified from the DECLARED responses rather than by
+ * symmetry with the other handlers.
+ */
+export function search(params: URLSearchParams): Response {
+  const raw = params.get("q");
+  if (raw === null) return invalidParameter("q is required");
+  if (raw.length < 1) return invalidParameter("q must be at least 1 character");
+  if (raw.length > MAX_QUERY_LENGTH) {
+    return invalidParameter(`q is at most ${MAX_QUERY_LENGTH} characters`);
+  }
+
+  const limit = searchLimitOf(params);
+  if (limit === null) {
+    return invalidParameter(`limit must be an integer between 1 and ${MAX_SEARCH_LIMIT}`);
+  }
+
+  const scope = params.get("collection");
+  if (scope !== null && (scope.length > 64 || !SEARCH_SLUG.test(scope))) {
+    return invalidParameter("collection must be a lowercase hyphenated slug");
+  }
+
+  const q = raw.trim();
+
+  /** The envelope, with the four fields a caller most often leaves at their
+      empty value. All five are required by the schema and always present. */
+  const answer = (
+    interpretedAs: Schemas["SearchResponse"]["interpretedAs"],
+    rest: Partial<Omit<Schemas["SearchResponse"], "query" | "interpretedAs">> = {},
+  ): Response =>
+    ok({
+      query: raw,
+      interpretedAs,
+      route: null,
+      wallet: null,
+      groups: [],
+      ...rest,
+    } satisfies Schemas["SearchResponse"]);
+
+  // `?q=%20%20` satisfies minLength 1, so it is the reader's input rather than a
+  // parse failure and must not 400 — but `name.includes("")` is true for every
+  // row, so without this guard a couple of spaces return the entire index.
+  // Q's own "an empty result is treated as absent" is about a FILTER that
+  // narrows an existing list; here there is no list to leave alone.
+  if (q === "") return answer("text");
+
+  // ------------------------------------------------------------------ address
+  //
+  // Terminal by contract: "anything else resolves to nothing — 200 with an empty
+  // result, never 404". An address-shaped string that resolves to neither a mint
+  // nor a holder does NOT fall through to a name search.
+  if (ADDRESS.test(q)) {
+    // Unfiltered, exactly like getNft above: a burned or removed asset still has
+    // a detail page, and a mint that reaches that page must reach it from here.
+    const mint = NFTS.find((nft) => nft.address === q);
+    if (mint) return answer("address", { route: { kind: "nft", id: mint.address } });
+
+    // heldBy, not a bare owner scan, so this count and the portfolio page can
+    // never disagree. WalletHit.totalCount has `minimum: 1`, so a wallet holding
+    // nothing is `wallet: null` rather than a hit reading zero.
+    const held = heldBy(q);
+    if (held.length > 0) {
+      return answer("address", {
+        route: { kind: "wallet", id: q },
+        wallet: { address: q, totalCount: held.length },
+      });
+    }
+
+    return answer("address");
+  }
+
+  // ------------------------------------------------------- number, then text
+  const asNumber = tokenNumber(q);
+  const needle = q.toLowerCase();
+
+  /**
+   * The one place a collection slug becomes a route.
+   *
+   * `route.kind: "collection"` is in the schema enum and in the precedence
+   * sentence — "an exact mint beats a wallet with holdings, which beats an exact
+   * collection slug" — so an exact slug producing one is the reading the contract
+   * states. But no example produces it and the description's text branch never
+   * mentions collections, so a real indexer may well never emit it. MOCK-ONLY
+   * UNTIL THE INDEXER CONFIRMS: the UI must not depend on it, and it does not —
+   * both surfaces derive collection matches from the site's own nav list
+   * (lib/search-rows.ts), so `piggy-gang` is reachable either way. That matters
+   * here more than it looks: its members are named a bare `#N`, so no text query
+   * ever finds that collection through `groups`.
+   *
+   * Byte-equal after case folding, and no slugification of spaces: "piggy gang"
+   * is a text search, not a slug.
+   */
+  const slugRoute = COLLECTIONS.some((collection) => collection.slug === needle)
+    ? ({ kind: "collection", id: needle } satisfies Schemas["SearchRoute"])
+    : null;
+
+  const matches = (nft: Row): boolean =>
+    asNumber === null ? nft.name.toLowerCase().includes(needle) : nft.number === asNumber;
+
+  /**
+   * Within one group. The contract specifies NO order here, no relevance score
+   * and no way to carry one, so this pins the browse default — token number
+   * ascending, unnumbered last — with a byte-order name tiebreak. A real indexer
+   * will very likely return relevance instead, which is why nothing in the UI may
+   * assume the first row is the best match. What this DOES promise is stability:
+   * identical requests come back in identical order, which is the one property
+   * worth asking the indexer to guarantee.
+   */
+  const preview = (rows: Row[]) =>
+    [...rows]
+      .sort((a, b) => SORTS.number(a, b) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+      .slice(0, limit)
+      .map(toSummary);
+
+  const groups = COLLECTIONS
+    // `collection` restricts TEXT results only, per its description — it says
+    // nothing about `route`, and an address never reaches this far anyway.
+    .filter((collection) => scope === null || collection.slug === scope)
+    .map((collection) => ({ collection, rows: population(collection.slug).filter(matches) }))
+    // A group with no matches is omitted rather than emitted empty: SearchGroup.total
+    // has `minimum: 1`.
+    .filter((group) => group.rows.length > 0)
+    .map((group) => ({
+      collection: refOf(group.collection.slug),
+      total: group.rows.length,
+      nfts: preview(group.rows),
+    }))
+    // "grouped by collection, most hits first". The contract leaves the tie open;
+    // registry order is the tiebreak, so `#2` — one hit in each of three
+    // collections — comes back in the same order the header pills are in, and in
+    // the same order on every request.
+    .sort((a, b) => b.total - a.total);
+
+  return answer(asNumber === null ? "text" : "number", { route: slugRoute, groups });
 }

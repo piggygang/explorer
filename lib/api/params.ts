@@ -1,7 +1,8 @@
 import type { components } from "@/lib/api/schema";
 
 /**
- * The browse query vocabulary, and deliberately nothing else.
+ * The API query vocabulary — the browse parameters and search's two limits,
+ * and deliberately nothing else.
  *
  * This module has no runtime imports at all — only `import type`, which erases —
  * so the client island (components/browse/browse-grid.tsx) can reach it without
@@ -43,8 +44,20 @@ export const MAX_TRAIT_TYPES = 16;
 export const MAX_TRAIT_VALUES = 64;
 export const MAX_TRAIT_VALUE_LENGTH = 128;
 
-/** The contract's `q`: minLength 1, maxLength 64. */
+/** The contract's `q`: minLength 1, maxLength 64. Shared by browse, facets and
+    search — search inlines its own `q` schema rather than $ref-ing this one,
+    but the bounds are identical. */
 export const MAX_QUERY_LENGTH = 64;
+
+/**
+ * /v1/search INLINES its own limit rather than $ref-ing components/parameters/Limit,
+ * and the two differ: 1..25 default 10 here, against 1..100 default 24 there. It also
+ * counts per COLLECTION GROUP, not per page. Sending BROWSE_LIMIT to search is legal
+ * by luck today and a 400 the day the contract narrows, so the mock parses search's
+ * limit with its own bounded helper rather than reusing limitOf().
+ */
+export const SEARCH_LIMIT = 10;
+export const MAX_SEARCH_LIMIT = 25;
 
 /** How many values a selection holds in total, across every trait type. */
 export function traitValueCount(trait: TraitSelection): number {

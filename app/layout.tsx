@@ -27,8 +27,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      {/* Body is a flex column whose children must stay the header, main and
-          footer — pages render all three themselves. */}
+      {/* Body is a flex column whose FLEX ITEMS must stay the header, main and
+          footer — pages render all three themselves. SiteHeader also emits the
+          search palette as a fourth child, which is never one: a closed <dialog>
+          is display:none and an open modal one is position:fixed in the top
+          layer, so neither takes part in this column. */}
       <body className="min-h-full flex flex-col font-sans">{children}</body>
     </html>
   );

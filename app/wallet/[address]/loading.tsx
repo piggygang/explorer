@@ -2,6 +2,11 @@ import { LoadingStatus, Skeleton, WalletGroupsSkeleton } from "@/components/skel
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 
+// The only loading.tsx in the repo, and so the only place SiteHeader's search
+// palette mounts inside a Suspense fallback and unmounts when the real page
+// swaps in. A palette opened during this brief window closes with the fallback.
+// Accepted rather than engineered around: the alternative — withholding the
+// palette while `pending` — makes ⌘K silently do nothing instead, which is worse.
 export default function WalletLoading() {
   return (
     <>

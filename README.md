@@ -1,7 +1,8 @@
 # piggygang-explorer
 
-Public explorer for the Piggy collections — faceted attribute search,
-owner lookup and per-NFT transaction history. Next.js on Vercel, styled like
+Public explorer for the Piggy collections — global smart search (name, number,
+mint or wallet, with a ⌘K palette), faceted attribute filters, owner lookup and
+per-NFT transaction history. Next.js on Vercel, styled like
 [dressme](https://github.com/piggygang/dressme), powered entirely by the
 PiggyGang Indexer API. Target home: `explorer.piggygang.net`.
 
@@ -65,10 +66,16 @@ API_BASE_URL=http://localhost:4010 pnpm dev      # same pages, different backend
 ```
 
 Prism replays the contract's own examples, so it answers every endpoint —
-including `/v1/collections/{slug}/holders` and `/v1/search`, which the in-app
-mock deliberately 404s because nothing calls them yet (ALG-638, ALG-634). It
-also ignores `trait`, `sort` and `cursor`, so it proves contract fidelity and
-the environment switch, not browsing.
+including `/v1/collections/{slug}/holders`, which the in-app mock deliberately
+404s because nothing calls it yet (ALG-638). It also ignores `trait`, `sort` and
+`cursor`, so it proves contract fidelity and the environment switch, not
+browsing.
+
+`/v1/search` is answered by both, and it is the first endpoint where they differ
+in substance rather than in coverage: only the in-app mock actually searches the
+fixtures, while Prism replays whichever example `Prefer:` selects, so `?q=` has
+no effect there. Prism also runs without `--errors`, so its request validation is
+non-blocking — the two mocks agree on 200 shapes, not on which requests are 4xx.
 
 The in-app mock is also reachable over HTTP at `/api/mock/v1/*`
 (e.g. `curl localhost:3000/api/mock/v1/collections`).

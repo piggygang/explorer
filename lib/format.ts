@@ -26,6 +26,21 @@ export function number(value: number): string {
   return value.toLocaleString("en-US");
 }
 
+/**
+ * A piggy's short label. Core assets are named a bare "#1"; token_metadata ones
+ * carry the collection name too. Leading with the number keeps a grid of 24 from
+ * repeating that name, and falls back to the name when there was no number to
+ * parse — the fixtures' one `Genesis Pig`.
+ *
+ * It lives here, beside the other derived strings, because two densities render
+ * it now: components/nft-card.tsx's grid cell and components/search/result-row.tsx's
+ * palette row. Two copies is how they start disagreeing about exactly the two
+ * rows that make the rule interesting.
+ */
+export function nftLabel(name: string, tokenNumber: number | null): string {
+  return tokenNumber === null ? name : `#${number(tokenNumber)}`;
+}
+
 /** 4 + ellipsis + 4, the house address form. Short strings pass through whole. */
 export function shorten(address: string): string {
   return address.length <= 11 ? address : `${address.slice(0, 4)}…${address.slice(-4)}`;

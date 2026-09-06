@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CollectionSearch } from "@/components/browse/collection-search";
 import { SortPills } from "@/components/browse/sort-pills";
 import { number } from "@/lib/format";
 import { type BrowseParams, activeCount, openSheetHref } from "@/lib/browse-params";
@@ -17,7 +18,8 @@ import { type BrowseParams, activeCount, openSheetHref } from "@/lib/browse-para
  * the rail is a later sibling with an auto z-index — so if the bar grows past
  * that offset the rail paints over it, and there is no second z-index in this
  * house to fix that with. Hence the chip row moved out to sit above the grid,
- * and hence the pills do not wrap at lg.
+ * hence the pills do not wrap at lg, and hence the search field is lg-only and
+ * sized to the same box as a sort pill rather than taller.
  */
 
 export const FILTER_TRIGGER_ID = "browse-filters";
@@ -33,12 +35,16 @@ const COUNT = "ml-auto shrink-0 font-mono text-xs text-ink-muted";
 
 export function BrowseToolbar({
   slug,
+  name,
   params,
   total,
   shown,
   hasFacets,
 }: {
   slug: string;
+  /** Names this row's search landmark, so it is distinguishable from the site
+      header's on the same page. */
+  name: string;
   params: BrowseParams;
   total: number | null;
   shown: number;
@@ -70,6 +76,18 @@ export function BrowseToolbar({
             Filters
           </span>
         )}
+
+        {/* Search narrows the grid the way Filters does, so it groups on the
+            left. The field is px-3.5 py-2 text-sm plus a border — the same 38px
+            box as a sort pill — so this bar stays exactly one row high and the
+            rail's offset still lands. Below lg it is display:none and the copy
+            in browse-results.tsx takes over. */}
+        <CollectionSearch
+          slug={slug}
+          name={name}
+          params={params}
+          className="hidden w-full max-w-[13rem] shrink-0 lg:block"
+        />
 
         <SortPills slug={slug} params={params} />
 
