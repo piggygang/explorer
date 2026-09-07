@@ -32,6 +32,16 @@ export const DEFAULT_SORT = "number" satisfies Sort;
 export const BROWSE_LIMIT = 24;
 
 /**
+ * The per-NFT timeline and ownership feeds page at the contract's default too,
+ * but for a different reason and so under a different name: a band of rows has
+ * no columns to leave ragged, and BROWSE_LIMIT's arithmetic is about grids.
+ * Naming it separately means a future change to one cannot silently move the
+ * other. It is also the append batch size, and the server forces it — a public
+ * Server Function must not let a caller choose its own page size.
+ */
+export const TIMELINE_LIMIT = 24;
+
+/**
  * The contract's own limits on a trait filter, quoted from TraitFilter's prose
  * and its schema: "At most 16 distinct trait types and 64 values per request",
  * `maxItems: 64` per type, and a value of 1 to 128 characters.

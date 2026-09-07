@@ -233,7 +233,7 @@ for (const { slug } of SAMPLE) {
   const counts = new Map();
   for (const nft of rows) {
     for (const attribute of nft.attributes) {
-      const key = `${attribute.traitType} ${attribute.value}`;
+      const key = `${attribute.traitType}\0${attribute.value}`;
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
   }
@@ -242,7 +242,7 @@ for (const { slug } of SAMPLE) {
     // Sum of inverse frequencies, the usual open rarity-score shape.
     score: nft.attributes.reduce(
       (total, attribute) =>
-        total + rows.length / counts.get(`${attribute.traitType} ${attribute.value}`),
+        total + rows.length / counts.get(`${attribute.traitType}\0${attribute.value}`),
       0,
     ),
   }));
@@ -532,6 +532,71 @@ if (staked) {
     nextEvent("stake", 6, { fromOwner: staked.owner, toOwner: staked.owner }),
   );
   staked.lastActivityAt = activity[staked.address][0].blockTime;
+}
+
+// One asset with a deep history, so "load older" is reviewable.
+//
+// Without this the fixtures top out at three events against a page size of 24,
+// so hasMore is false for every pig and the paging path is dead in mock mode —
+// which is where CI builds. The same standard the browse grid sets for its
+// auto-load ceiling: a limit nobody can hit in review is a limit nobody has
+// seen work.
+//
+// It also carries the venue vocabulary production actually returns. The mock
+// otherwise only ever says Tensor or Magic Eden, while DigitalEyes is the most
+// common venue on chain and Solanart, Solsea and Hyperspace all appear.
+const VENUES = ["DigitalEyes", "Magic Eden", "Solanart", "Tensor", "Solsea", "Hyperspace"];
+const DEEP_EVENTS = 62;
+
+const deep = nfts.find((nft) => !nft.burned && nft.collectionSlug === SAMPLE[0].slug);
+if (deep) {
+  const events = [];
+  const intervals = [];
+  // Oldest first while building, so each hop reads forwards; sorted newest
+  // first at the end like every other asset.
+  const mintedHours = 24 * 400;
+  const mintedTo = WALLETS[1];
+  const mint = nextEvent("mint", mintedHours, { toOwner: mintedTo });
+  events.push(mint);
+
+  let holder = mintedTo;
+  let openedBy = mint.signature;
+  let openedHours = mintedHours;
+  // Counted separately from the hop: every third hop is a sale, so indexing the
+  // venue list by hop would share a period with it and only ever reach two of
+  // the six.
+  let saleIndex = 0;
+
+  for (let hop = 0; hop < DEEP_EVENTS - 1; hop += 1) {
+    // Walk backwards in time towards now, leaving room for the open interval.
+    const hours = Math.max(2, mintedHours - Math.round(((hop + 1) * (mintedHours - 24)) / DEEP_EVENTS));
+    // The last hop must land on the asset's real owner, or the detail panel and
+    // its own history would disagree about who holds it.
+    const next =
+      hop === DEEP_EVENTS - 2 ? (deep.owner ?? WALLETS[3]) : WALLETS[1 + ((hop + 2) % (WALLETS.length - 1))];
+    const isSale = hop % 3 === 1;
+    const event = nextEvent(isSale ? "sale" : "transfer", hours, {
+      fromOwner: holder,
+      toOwner: next,
+      priceLamports: isSale ? String(120_000_000 + hop * 41_500_000) : null,
+      marketplace: isSale ? VENUES[saleIndex % VENUES.length] : null,
+    });
+    if (isSale) saleIndex += 1;
+    events.push(event);
+    intervals.push(interval(holder, openedHours, hours, openedBy, event.signature));
+    holder = next;
+    openedBy = event.signature;
+    openedHours = hours;
+  }
+  // Exactly one open interval, per the contract's "at most one".
+  intervals.push(interval(holder, openedHours, null, openedBy, null));
+
+  events.sort((a, b) => b.slot - a.slot);
+  intervals.sort((a, b) => b.fromSlot - a.fromSlot);
+  activity[deep.address] = events;
+  ownership[deep.address] = intervals;
+  deep.lastActivityAt = events[0].blockTime;
+  console.log("deep-history fixture: %s with %d events", deep.address, events.length);
 }
 
 // ------------------------------------------------------------------- stats

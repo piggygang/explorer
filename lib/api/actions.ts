@@ -1,8 +1,14 @@
 "use server";
 
-import { ApiError, browseCollectionNfts } from "@/lib/api/client";
-import type { NftSummary } from "@/lib/api/client";
-import { BROWSE_LIMIT, MAX_QUERY_LENGTH, isBrowseSort, traitsWithinCaps } from "@/lib/api/params";
+import { ApiError, browseCollectionNfts, getNftActivity, getNftOwners } from "@/lib/api/client";
+import type { ActivityEvent, NftSummary, OwnershipInterval } from "@/lib/api/client";
+import {
+  BROWSE_LIMIT,
+  MAX_QUERY_LENGTH,
+  TIMELINE_LIMIT,
+  isBrowseSort,
+  traitsWithinCaps,
+} from "@/lib/api/params";
 import type { TraitSelection } from "@/lib/api/params";
 
 /**
@@ -58,6 +64,70 @@ export async function loadMoreCollectionNfts(input: {
       // Opaque: echoed verbatim, never parsed, never constructed here.
       cursor: input.cursor,
       limit: BROWSE_LIMIT,
+    });
+    return { ok: true, ...page };
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "invalid_cursor") {
+      return { ok: false, reason: "expired" };
+    }
+    return { ok: false, reason: "failed" };
+  }
+}
+
+/**
+ * The same shape for the two per-NFT feeds, which page identically: newest
+ * first, keyset on an append-only history. The contract calls these feeds
+ * stable — "fetched pages stay stable; new events appear by re-requesting page
+ * one" — so unlike browse there is no sort whose key can move underneath a
+ * cursor, and `expired` here really only means a deploy rotated the cursor.
+ *
+ * `kind` is deliberately not a parameter. The endpoint accepts it and it IS
+ * part of cursor scope, so offering a filter would mean resetting to page one
+ * on every toggle; that is a feature, not a page-size argument, and it is not
+ * ALG-636's.
+ */
+export type MoreActivity =
+  | { ok: true; data: ActivityEvent[]; nextCursor: string | null; hasMore: boolean }
+  | { ok: false; reason: "expired" | "failed" };
+
+export type MoreOwners =
+  | { ok: true; data: OwnershipInterval[]; nextCursor: string | null; hasMore: boolean }
+  | { ok: false; reason: "expired" | "failed" };
+
+/** The contract's Address pattern. Base58 excludes 0, O, I and l. */
+const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+export async function loadMoreNftActivity(input: {
+  address: string;
+  cursor: string;
+}): Promise<MoreActivity> {
+  if (!ADDRESS.test(input.address)) return { ok: false, reason: "failed" };
+
+  try {
+    const page = await getNftActivity(input.address, {
+      // Opaque: echoed verbatim, never parsed, never constructed here.
+      cursor: input.cursor,
+      limit: TIMELINE_LIMIT,
+    });
+    return { ok: true, ...page };
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "invalid_cursor") {
+      return { ok: false, reason: "expired" };
+    }
+    return { ok: false, reason: "failed" };
+  }
+}
+
+export async function loadMoreNftOwners(input: {
+  address: string;
+  cursor: string;
+}): Promise<MoreOwners> {
+  if (!ADDRESS.test(input.address)) return { ok: false, reason: "failed" };
+
+  try {
+    const page = await getNftOwners(input.address, {
+      cursor: input.cursor,
+      limit: TIMELINE_LIMIT,
     });
     return { ok: true, ...page };
   } catch (error) {
