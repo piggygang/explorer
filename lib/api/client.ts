@@ -237,12 +237,26 @@ export async function getCollectionActivity(
   return data;
 }
 
+/**
+ * 400 is a miss here, not a fault. `id` comes straight out of the URL bar, and
+ * the real API answers `400 invalid_parameter` for anything that is not base58
+ * where the in-process mock answers 404 — so without this branch every mistyped
+ * or stale /nfts/ link renders a 500 error page to readers and crawlers alike,
+ * but only once API_BASE_URL is set. A route segment that cannot name an asset
+ * has no asset; the page turns both into notFound().
+ *
+ * Only `invalid_parameter` — a 400 carrying any other code is still a real
+ * fault and still throws.
+ */
 export async function getNft(id: string): Promise<NftDetail | null> {
   const { data, error, response } = await api().GET("/v1/nfts/{id}", {
     params: { path: { id } },
     ...CACHE,
   });
   if (response.status === 404) return null;
+  if (response.status === 400 && (error as Schemas["Error"] | undefined)?.error === "invalid_parameter") {
+    return null;
+  }
   if (!data) fail(response.status, error, `getNft(${id})`);
   return data;
 }

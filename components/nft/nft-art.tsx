@@ -1,5 +1,6 @@
 import { NftImage } from "@/components/nft-image";
 import type { NftDetail } from "@/lib/api/client";
+import { nftLabel } from "@/lib/format";
 
 /**
  * The large art well. Unlike a grid cell, a missing image here IS the subject of
@@ -17,7 +18,7 @@ export function NftArt({ nft }: { nft: NftDetail }) {
         <NftImage
           src={nft.imageUri}
           status={nft.imageStatus}
-          alt={nft.name}
+          alt={nftLabel(nft.name, nft.number)}
           eager
           sizes="(min-width: 1024px) 380px, 100vw"
         />

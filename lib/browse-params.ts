@@ -93,6 +93,44 @@ function build(slug: string, params: BrowseParams): string {
   return query ? `/collections/${slug}?${query}` : `/collections/${slug}`;
 }
 
+/**
+ * The filter context an NFT link carries, so /nfts/[id] can send the reader back
+ * to the grid they came from rather than to the unfiltered collection.
+ *
+ * Byte-identical to what build() writes, minus `filters`: the drawer is a
+ * viewport state, not part of the result set, and it must not follow someone
+ * onto a page that has no drawer.
+ *
+ * The NFT page must never read this server-side — searchParams is a Request-time
+ * API and would opt that route out of static rendering, which ALG-639 needs for
+ * a sitemap of every pig. It is read on the client, by BackToBrowse.
+ */
+export function browseContext(params: {
+  trait: TraitSelection;
+  q?: string;
+  sort?: string;
+}): string {
+  const search = new URLSearchParams();
+  for (const [type, values] of Object.entries(params.trait)) {
+    for (const value of values) search.append(`trait[${type}]`, value);
+  }
+  if (params.q) search.set("q", params.q);
+  if (params.sort) search.set("sort", params.sort);
+  return search.toString();
+}
+
+/**
+ * The inverse: rebuild the browse URL from the context a link carried. It routes
+ * through parseBrowseParams on purpose, so a hand-edited over-length `q` or an
+ * unavailable sort is dropped here exactly as it would be on the browse page —
+ * the two can never disagree about which grid a link names.
+ */
+export function browseHrefFromContext(slug: string, search: URLSearchParams): string {
+  const record: Record<string, string[]> = {};
+  for (const key of new Set(search.keys())) record[key] = search.getAll(key);
+  return build(slug, parseBrowseParams(record));
+}
+
 /** Whether one more value can be selected without exceeding the contract's caps.
     Removal is never blocked — a reader who arrives at the cap by URL must always
     be able to get back under it. */

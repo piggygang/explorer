@@ -44,15 +44,24 @@ export function AddressActions({
   address,
   kind,
   showWallet = true,
+  truncate = false,
 }: {
   address: string;
   kind: "wallet" | "mint";
   showWallet?: boolean;
+  /**
+   * Show the address short. Opt-in, and only the owner card takes it: a mint is
+   * the asset's identity and the panel it sits in is where people copy it from,
+   * so that one stays whole. Copy always carries the full value either way.
+   */
+  truncate?: boolean;
 }) {
   const href = kind === "mint" ? solscan.token(address) : solscan.account(address);
   return (
     <>
-      <p className="font-mono text-sm break-all">{address}</p>
+      <p className="font-mono text-sm break-all" title={truncate ? address : undefined}>
+        {truncate ? shorten(address) : address}
+      </p>
       <div className={ACTIONS}>
         <CopyButton value={address} />
         {showWallet && kind === "wallet" && (

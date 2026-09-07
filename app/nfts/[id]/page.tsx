@@ -6,6 +6,8 @@ import { notFound } from "next/navigation";
 import { ActionLinks } from "@/components/nft/action-links";
 import { ActivityTimeline } from "@/components/nft/activity-timeline";
 import { AssetPanel } from "@/components/nft/asset-panel";
+import { BackToBrowse, BackToBrowseFallback } from "@/components/nft/back-to-browse";
+import { Neighbours, RarityRank } from "@/components/nft/neighbours";
 import { NftArt } from "@/components/nft/nft-art";
 import { OwnerPanel } from "@/components/nft/owner-panel";
 import { OwnershipHistory } from "@/components/nft/ownership-history";
@@ -24,6 +26,7 @@ import {
 } from "@/lib/api/client";
 import type { NftDetail } from "@/lib/api/client";
 import { presentation, toDisplay, withComingSoon } from "@/lib/collections";
+import { nftLabel } from "@/lib/format";
 
 // Deliberately NO loading.tsx for this segment. A loading.tsx wraps the route in
 // a Suspense boundary above the page, so Next streams the shell with a 200 and
@@ -40,6 +43,8 @@ const PANEL = "rounded-card border border-line bg-surface p-4";
 const EYEBROW = "text-xs font-medium tracking-[0.14em] text-ink-muted uppercase";
 const BADGE =
   "shrink-0 rounded-full border border-line px-2 py-0.5 font-mono text-[11px] text-ink-muted";
+const CHIP =
+  "inline-flex shrink-0 items-center rounded-full border border-[var(--accent)] px-2.5 py-0.5 text-xs text-ink transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
 const BACK =
   "shrink-0 rounded-full border border-line px-3.5 py-2 text-sm text-ink-muted transition-colors hover:border-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 
@@ -47,20 +52,51 @@ export async function generateMetadata(props: PageProps<"/nfts/[id]">): Promise<
   const { id } = await props.params;
   const nft = await getNft(id);
   if (!nft) return { title: "Unknown piggy" };
+  // The real API names a pig `#2050`, not `Piggy SOL Gang #2050` — and the
+  // contract allows `""` before the metadata backfill. A tab and a shared link
+  // have no collection nav beside them to supply the missing half, so the title
+  // composes it; the page heading does not need to, because the chip is there.
+  const label = nftLabel(nft.name, nft.number);
   return {
-    title: nft.name,
-    description: `${nft.name} — traits, owner and the full on-chain history.`,
+    title: `${label} · ${nft.collection.name}`,
+    description: `${label} from ${nft.collection.name} — traits, owner and the full on-chain history.`,
   };
 }
 
-/** Traits stream: pricing ~7 chips costs a full unfiltered facets call. */
+/**
+ * Traits stream: pricing ~7 chips costs a full unfiltered facets call.
+ *
+ * It owns its own heading so the overall rank can sit in the same row, and
+ * because the denominator that makes the rank mean anything is `facets.total` —
+ * the ranked population, burned pigs included, which is the same set the
+ * indexer's rarity pass ranks over. A facets outage still leaves the rank: it
+ * comes from the detail response, not from here.
+ */
 async function Traits({ nft }: { nft: NftDetail }) {
   const facets = await getCollectionFacets(nft.collection.slug).catch((error: unknown) => ({
     error,
   }));
+  const failed = "error" in facets;
 
-  if ("error" in facets) return <ErrorNote what="trait rarity" error={facets.error} />;
-  return <TraitChips attributes={nft.attributes} facets={facets.facets} />;
+  return (
+    <>
+      <TraitsHeading nft={nft} of={failed ? null : facets.total} />
+      {failed ? (
+        <ErrorNote what="trait rarity" error={facets.error} />
+      ) : (
+        <TraitChips attributes={nft.attributes} facets={facets.facets} />
+      )}
+    </>
+  );
+}
+
+function TraitsHeading({ nft, of }: { nft: NftDetail; of: number | null }) {
+  return (
+    <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+      <h2 className={EYEBROW}>Traits</h2>
+      <RarityRank nft={nft} of={of} />
+    </div>
+  );
 }
 
 /** The event list streams; the lifetime summary rides on the detail response. */
@@ -109,21 +145,20 @@ export default async function NftPage(props: PageProps<"/nfts/[id]">) {
           <div className="mb-5 flex items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{nft.name}</h1>
+                <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+                  {nftLabel(nft.name, nft.number)}
+                </h1>
                 {nft.burned && <span className={BADGE}>Burned</span>}
               </div>
-              <p className="mt-0.5 text-sm text-ink-muted">
-                <Link
-                  href={`/collections/${nft.collection.slug}`}
-                  className="transition-colors hover:text-ink"
-                >
+              <p className="mt-1.5">
+                <Link href={`/collections/${nft.collection.slug}`} className={CHIP}>
                   {nft.collection.name}
                 </Link>
               </p>
             </div>
-            <Link href={`/collections/${nft.collection.slug}`} className={BACK}>
-              Back to browse
-            </Link>
+            <Suspense fallback={<BackToBrowseFallback slug={nft.collection.slug} className={BACK} />}>
+              <BackToBrowse slug={nft.collection.slug} className={BACK} />
+            </Suspense>
           </div>
 
           <div className={SPLIT}>
@@ -143,13 +178,17 @@ export default async function NftPage(props: PageProps<"/nfts/[id]">) {
               <SectionNav
                 traits={nft.attributes.length}
                 events={null}
-                owners={nft.activitySummary.ownerCount}
+                owners={nft.activitySummary?.ownerCount ?? null}
               />
 
               <section id="traits" aria-label="Traits" className={`${PANEL} scroll-mt-32`}>
-                <h2 className={`${EYEBROW} mb-3`}>Traits</h2>
                 <Suspense
-                  fallback={<p className="text-sm text-ink-muted">Reading trait rarity…</p>}
+                  fallback={
+                    <>
+                      <h2 className={`${EYEBROW} mb-3`}>Traits</h2>
+                      <p className="text-sm text-ink-muted">Reading trait rarity…</p>
+                    </>
+                  }
                 >
                   <Traits nft={nft} />
                 </Suspense>
@@ -173,6 +212,12 @@ export default async function NftPage(props: PageProps<"/nfts/[id]">) {
                 intervals={intervals}
                 error={ownersFailed ? owners.error : undefined}
               />
+
+              {/* Two cheap indexed lookups, so they stream rather than delay the
+                  404 decision the blocking wave above already made. */}
+              <Suspense fallback={null}>
+                <Neighbours nft={nft} />
+              </Suspense>
             </div>
           </div>
         </div>

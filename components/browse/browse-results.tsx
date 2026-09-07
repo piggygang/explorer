@@ -13,6 +13,7 @@ import { number } from "@/lib/format";
 import { BROWSE_RAIL, BROWSE_SPLIT } from "@/lib/browse-layout";
 import {
   type BrowseParams,
+  browseContext,
   browseIdentity,
   clearHref,
   withinCaps,
@@ -81,6 +82,7 @@ export async function BrowseResults({
   const facetData: FacetsResponse | null = facets;
   const nfts: NftSummary[] = page?.data ?? [];
   const traits = traitCount(params);
+  const context = browseContext(params);
   const searching = params.q !== undefined;
 
   /**
@@ -217,7 +219,7 @@ export async function BrowseResults({
             >
               {nfts.map((nft, index) => (
                 <li key={nft.address} className="flex">
-                  <NftCard nft={nft} eager={index < 4} />
+                  <NftCard nft={nft} eager={index < 4} context={context} />
                 </li>
               ))}
             </BrowseGrid>
