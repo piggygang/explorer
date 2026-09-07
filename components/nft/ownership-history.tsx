@@ -1,27 +1,39 @@
-import { AddressLink } from "@/components/address";
 import { EmptyNote } from "@/components/empty-state";
 import { ErrorNote } from "@/components/error-note";
+import { OwnersMore } from "@/components/nft/feed-more";
+import { OwnerRow } from "@/components/owner-row";
 import type { OwnershipInterval } from "@/lib/api/client";
-import { absoluteTime, relativeTime } from "@/lib/format";
 
 /**
- * Who held it, and when. Intervals never overlap, so (owner, fromSlot)
- * identifies a row uniquely, and the contract marks the open one with
- * isCurrent rather than leaving it to be inferred from a null.
+ * Who held it, and when — the derived view of the same history the timeline
+ * shows as events. Intervals never overlap, so fromSlot identifies a row
+ * uniquely, and the contract marks the open one with isCurrent rather than
+ * leaving it to be inferred from a null.
+ *
+ * A section, not a tab. This route's whole premise is one indexable, shareable,
+ * Ctrl+F-able page per pig — the reasoning is written out in section-nav.tsx —
+ * and splitting the record across tabbed panels would trade that away for
+ * vertical space the "load older" control already manages.
+ *
+ * "At most one interval is open; a burned or not-yet-backfilled asset has none."
+ * So nothing here counts on finding a current row: a burned pig can show fifty
+ * intervals and no Current badge, which is correct rather than missing.
  */
 
 const PANEL = "rounded-card border border-line bg-surface p-4";
 const EYEBROW = "text-xs font-medium tracking-[0.14em] text-ink-muted uppercase";
-const BAND = "mt-3 grid gap-px overflow-hidden rounded-card border border-line bg-line";
-const ROW = "flex flex-wrap items-baseline justify-between gap-2 bg-surface p-3";
-const WHEN = "font-mono text-[11px] text-ink-muted";
-const BADGE = "ml-2 rounded-full bg-ink/10 px-2 py-0.5 font-mono text-[10px] text-ink";
 
 export function OwnershipHistory({
+  address,
   intervals,
+  hasMore,
+  nextCursor,
   error,
 }: {
+  address: string;
   intervals: OwnershipInterval[];
+  hasMore: boolean;
+  nextCursor: string | null;
   error?: unknown;
 }) {
   return (
@@ -37,29 +49,16 @@ export function OwnershipHistory({
           <EmptyNote>No ownership records yet — the indexer has not walked this piggy back.</EmptyNote>
         </div>
       ) : (
-        <ul className={BAND}>
+        <OwnersMore
+          address={address}
+          initialKeys={intervals.map((held) => String(held.fromSlot))}
+          initialCursor={nextCursor}
+          initialHasMore={hasMore}
+        >
           {intervals.map((held) => (
-            <li key={`${held.owner}-${held.fromSlot}`} className={ROW}>
-              <span className="text-sm">
-                <AddressLink address={held.owner} />
-                {held.isCurrent && <span className={BADGE}>Current</span>}
-              </span>
-              <span className={WHEN}>
-                <time dateTime={held.fromTs} title={absoluteTime(held.fromTs)}>
-                  {relativeTime(held.fromTs)}
-                </time>
-                {held.toTs !== null && (
-                  <>
-                    {" → "}
-                    <time dateTime={held.toTs} title={absoluteTime(held.toTs)}>
-                      {relativeTime(held.toTs)}
-                    </time>
-                  </>
-                )}
-              </span>
-            </li>
+            <OwnerRow key={held.fromSlot} held={held} />
           ))}
-        </ul>
+        </OwnersMore>
       )}
     </section>
   );

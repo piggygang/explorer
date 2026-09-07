@@ -23,6 +23,13 @@ const HEAD = "flex items-baseline justify-between gap-3";
 const KIND = "text-sm font-medium";
 const PRICE =
   "shrink-0 rounded-full bg-[var(--accent)]/15 px-2 py-0.5 font-mono text-[11px] text-[var(--accent)]";
+// The venue reads with the price rather than trailing the wallets, but keeps
+// its own element: the contract makes marketplace free text ("so the classifier
+// can learn new venues without a contract change") and only ever sets it on a
+// sale, where it may still be null. So it is styled, never mapped to a logo —
+// a lookup keyed on an open vocabulary is a lookup that misses.
+const VENUE = "shrink-0 rounded-full border border-line px-2 py-0.5 text-[11px] text-ink-muted";
+const HEAD_END = "flex shrink-0 items-baseline gap-1.5";
 const PARTIES = "flex flex-wrap items-center gap-1.5 text-xs text-ink-muted";
 const STAMP = "flex flex-wrap items-center gap-1.5 text-[11px] text-ink-muted";
 const SIG =
@@ -81,9 +88,12 @@ export function ActivityRow({ event }: { event: ActivityEvent }) {
         <div className={META}>
           <p className={HEAD}>
             <span className={KIND}>{label}</span>
-            {event.priceLamports !== null && (
-              <span className={PRICE}>{formatSol(event.priceLamports)}</span>
-            )}
+            <span className={HEAD_END}>
+              {event.priceLamports !== null && (
+                <span className={PRICE}>{formatSol(event.priceLamports)}</span>
+              )}
+              {event.marketplace !== null && <span className={VENUE}>{event.marketplace}</span>}
+            </span>
           </p>
           <p className={PARTIES}>
             {event.fromOwner !== null && <AddressLink address={event.fromOwner} />}
@@ -94,7 +104,6 @@ export function ActivityRow({ event }: { event: ActivityEvent }) {
             {event.fromOwner === null && event.toOwner !== null && (
               <span className="sr-only">Minted to</span>
             )}
-            {event.marketplace !== null && <span>· {event.marketplace}</span>}
           </p>
           <p className={STAMP}>
             <time dateTime={event.blockTime} title={absoluteTime(event.blockTime)}>
