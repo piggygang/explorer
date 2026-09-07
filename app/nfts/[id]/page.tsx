@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -43,10 +43,6 @@ const PANEL = "rounded-card border border-line bg-surface p-4";
 const EYEBROW = "text-xs font-medium tracking-[0.14em] text-ink-muted uppercase";
 const BADGE =
   "shrink-0 rounded-full border border-line px-2 py-0.5 font-mono text-[11px] text-ink-muted";
-const TRAIT_SUMMARY =
-  "flex cursor-pointer list-none items-center gap-2 marker:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] [&::-webkit-details-marker]:hidden";
-const CHEVRON =
-  "shrink-0 font-mono text-xs text-ink-muted transition-transform group-open:rotate-90";
 const CHIP =
   "inline-flex shrink-0 items-center rounded-full border border-[var(--accent)] px-2.5 py-0.5 text-xs text-ink transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
 const BACK =
@@ -83,54 +79,23 @@ async function Traits({ nft }: { nft: NftDetail }) {
   const failed = "error" in facets;
 
   return (
-    <TraitsDisclosure nft={nft} of={failed ? null : facets.total}>
+    <>
+      <TraitsHeading nft={nft} of={failed ? null : facets.total} />
       {failed ? (
         <ErrorNote what="trait rarity" error={facets.error} />
       ) : (
         <TraitChips attributes={nft.attributes} facets={facets.facets} />
       )}
-    </TraitsDisclosure>
+    </>
   );
 }
 
-/**
- * Traits as a native <details>, matching the browse rail's accordion.
- *
- * `open` is absent and must stay a bare literal either way. React writes the DOM
- * attribute only when the PROP changes, so an uncontrolled <details> means a
- * reader who opens this section keeps it open across the navigations this page
- * performs — the same property facet-section.tsx relies on.
- *
- * Collapsed by default is a deliberate call with three known costs: find-in-page
- * does not search a closed <details>, #traits from the section nav lands on a
- * closed box, and traits are this route's long-tail search surface. The rank and
- * the chevron stay visible in the summary so the landing is at least legible.
- *
- * The <h2> stays inside the <summary>: a summary is a button, not a heading, and
- * dropping it would take Traits out of the document outline.
- */
-function TraitsDisclosure({
-  nft,
-  of,
-  children,
-}: {
-  nft: NftDetail;
-  of: number | null;
-  children: ReactNode;
-}) {
+function TraitsHeading({ nft, of }: { nft: NftDetail; of: number | null }) {
   return (
-    <details className="group">
-      <summary className={TRAIT_SUMMARY}>
-        <span aria-hidden="true" className={CHEVRON}>
-          ▸
-        </span>
-        <h2 className={EYEBROW}>Traits</h2>
-        <span className="ml-auto">
-          <RarityRank nft={nft} of={of} />
-        </span>
-      </summary>
-      <div className="mt-3">{children}</div>
-    </details>
+    <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+      <h2 className={EYEBROW}>Traits</h2>
+      <RarityRank nft={nft} of={of} />
+    </div>
   );
 }
 
@@ -225,20 +190,12 @@ export default async function NftPage(props: PageProps<"/nfts/[id]">) {
               />
 
               <section id="traits" aria-label="Traits" className={`${PANEL} scroll-mt-32`}>
-                {/* The fallback is the same closed disclosure, so the shell
-                    does not jump when facets land. Its body is behind the
-                    collapsed summary either way. */}
                 <Suspense
                   fallback={
-                    <details className="group">
-                      <summary className={TRAIT_SUMMARY}>
-                        <span aria-hidden="true" className={CHEVRON}>
-                          ▸
-                        </span>
-                        <h2 className={EYEBROW}>Traits</h2>
-                      </summary>
-                      <p className="mt-3 text-sm text-ink-muted">Reading trait rarity…</p>
-                    </details>
+                    <>
+                      <h2 className={`${EYEBROW} mb-3`}>Traits</h2>
+                      <p className="text-sm text-ink-muted">Reading trait rarity…</p>
+                    </>
                   }
                 >
                   <Traits nft={nft} />
