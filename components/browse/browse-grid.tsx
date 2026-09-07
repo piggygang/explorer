@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { NftCard } from "@/components/nft-card";
 import { BROWSE_GRID } from "@/lib/browse-layout";
+import { browseContext } from "@/lib/browse-params";
 import { loadMoreCollectionNfts } from "@/lib/api/actions";
 import type { NftSummary } from "@/lib/api/client";
 import type { TraitSelection } from "@/lib/api/params";
@@ -87,6 +88,11 @@ export function BrowseGrid({
   /** Whether the load in flight came from the button rather than the observer. */
   const pressed = useRef(false);
 
+  // The same context page one's cards carry, so an appended card offers the
+  // same way back. browse-params is client-safe: lib/api/params, its only
+  // dependency, has no runtime imports.
+  const context = browseContext({ trait, q, sort });
+
   const shown = initialAddresses.length + appended.length;
   const autoArmed = autoUsed < AUTO_BATCHES;
 
@@ -166,7 +172,7 @@ export function BrowseGrid({
           {children}
           {appended.map((nft) => (
             <li key={nft.address} className="flex">
-              <NftCard nft={nft} />
+              <NftCard nft={nft} context={context} />
             </li>
           ))}
         </ul>

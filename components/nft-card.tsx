@@ -46,10 +46,17 @@ export function NftCard({
   nft,
   eager = false,
   showCollection = false,
+  context,
 }: {
   nft: NftSummary;
   eager?: boolean;
   showCollection?: boolean;
+  /**
+   * The browse query this card was rendered under, so the NFT page can offer a
+   * way back to the same grid. Serialized by browseContext(); only the browse
+   * surfaces pass it, because only they have a grid to return to.
+   */
+  context?: string;
 }) {
   const accent = { "--accent": presentation(nft.collection.slug).accent } as CSSProperties;
 
@@ -60,7 +67,7 @@ export function NftCard({
 
   return (
     <Link
-      href={`/nfts/${nft.address}`}
+      href={context ? `/nfts/${nft.address}?${context}` : `/nfts/${nft.address}`}
       style={accent}
       className={`${CARD} ${nft.burned ? BURNED : LIVE}`}
     >
@@ -76,8 +83,9 @@ export function NftCard({
             {label}
           </span>
           {/* One slot, and burned wins it: a burned piggy's rank is trivia, its
-              burn is not. rarityRank is null until ALG-627 ships, and a null
-              rank renders nothing at all — no em dash, no "unranked". */}
+              burn is not. A null rank renders nothing at all — no em dash, no
+              "unranked" — which is still the case for a collection with no
+              facetable traits to rank on. */}
           {nft.burned ? (
             <span className={BADGE}>Burned</span>
           ) : (

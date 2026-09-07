@@ -14,6 +14,13 @@ import { absoluteTime, relativeTime } from "@/lib/format";
  * disagrees with the observed owner — rather than attributing a date to the
  * wrong wallet. Deriving it here from the interval list would throw that care
  * away, so the panel no longer takes one.
+ *
+ * Null has two causes and the reader is owed the difference. MintInfo is the
+ * contract's own discriminator: "every field is null until the activity backfill
+ * has run for this asset", so a null signature means nobody has walked this
+ * piggy yet — a state of the indexer, not of the piggy. A null heldSince with a
+ * walked asset is the disagreement case above, and stays silent: there is
+ * nothing true to say about it in one line.
  */
 
 const PANEL = "rounded-card border border-line bg-surface p-4";
@@ -22,6 +29,7 @@ const HELD = "mt-3 text-[11px] text-ink-muted";
 
 export function OwnerPanel({ nft }: { nft: NftDetail }) {
   const { heldSince } = nft.ownership;
+  const unwalked = heldSince === null && nft.mint.signature === null;
 
   return (
     <section aria-label="Owner" className={PANEL}>
@@ -30,8 +38,8 @@ export function OwnerPanel({ nft }: { nft: NftDetail }) {
         <p className="text-sm text-ink-muted">Nobody — this piggy was burned.</p>
       ) : (
         <>
-          <AddressActions address={nft.owner} kind="wallet" />
-          {heldSince !== null && (
+          <AddressActions address={nft.owner} kind="wallet" truncate />
+          {heldSince !== null ? (
             <p className={HELD}>
               Held since{" "}
               <time dateTime={heldSince} title={absoluteTime(heldSince)}>
@@ -39,6 +47,12 @@ export function OwnerPanel({ nft }: { nft: NftDetail }) {
               </time>
               .
             </p>
+          ) : (
+            unwalked && (
+              <p className={HELD}>
+                Held since — the indexer hasn’t walked this piggy’s history yet.
+              </p>
+            )
           )}
         </>
       )}
