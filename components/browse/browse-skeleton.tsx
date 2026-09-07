@@ -1,4 +1,4 @@
-import { NftGridSkeleton, LoadingStatus, Skeleton, SkeletonLine } from "@/components/skeleton";
+import { NftGridSkeleton, LoadingStatus, SkeletonLine } from "@/components/skeleton";
 import { BROWSE_GRID, BROWSE_RAIL, BROWSE_SPLIT } from "@/lib/browse-layout";
 
 /**
@@ -13,14 +13,17 @@ import { BROWSE_GRID, BROWSE_RAIL, BROWSE_SPLIT } from "@/lib/browse-layout";
  */
 
 const CONTAINER = "mx-auto w-full max-w-6xl px-5";
+// One collapsed <summary> per trait type: the rail arrives closed, so holding
+// space for open sections would overstate its height and shrink it the moment
+// the real one streams in. py-3 matches the summary's own padding.
 const SECTION = "flex flex-col gap-2 border-b border-line py-3 last:border-b-0";
+/** Eight, the facetable trait-type count every launching collection carries. */
+const SECTIONS = [0, 1, 2, 3, 4, 5, 6, 7];
 
 function SectionSkeleton() {
   return (
     <div className={SECTION}>
       <SkeletonLine w="w-28" />
-      <Skeleton className="h-8 w-full !rounded-xl" />
-      <Skeleton className="h-8 w-full !rounded-xl" />
     </div>
   );
 }
@@ -29,7 +32,7 @@ export function BrowseSkeleton() {
   return (
     <div className={`${CONTAINER} pt-4 pb-16 ${BROWSE_SPLIT}`}>
       <div aria-hidden="true" className={BROWSE_RAIL}>
-        {[0, 1, 2, 3].map((index) => (
+        {SECTIONS.map((index) => (
           <SectionSkeleton key={index} />
         ))}
       </div>

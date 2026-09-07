@@ -13,13 +13,24 @@ import type { BrowseParams } from "@/lib/browse-params";
 /**
  * One trait type, as a native <details> section.
  *
- * `open` is a bare literal and must stay one. React writes a DOM attribute only
- * when the PROP changes, so a constant means a section the reader collapsed by
- * hand survives the navigation that every filter toggle performs. Deriving it
- * from the selection would slam a section shut the moment its last value was
- * removed; deriving it from the index would not be constant either, since the
- * contract orders the facets array but does not promise a trait type with no
- * surviving values still appears in it.
+ * `open` follows the SHELL, and nothing else. The rail is chrome the reader did
+ * not ask for, sitting beside the grid they came for, so it starts collapsed:
+ * eight summary rows instead of ninety-odd links, and eight tab stops instead of
+ * a hundred. The drawer is the opposite — it only exists because someone tapped
+ * "Filters" — so opening onto eight closed rows would answer a question with a
+ * second question. It starts expanded.
+ *
+ * `shell` is fixed for the life of a mounted section, so this is still the bare
+ * literal the DOM needs. React writes the attribute only when the PROP changes,
+ * so a section the reader OPENS by hand survives the navigation that every
+ * filter toggle performs. Deriving it from the selection would slam a section
+ * shut the moment its last value was removed; deriving it from the index would
+ * not be constant either, since the contract orders the facets array but does
+ * not promise a trait type with no surviving values still appears in it.
+ *
+ * Collapsing hides how many piggies wear a value, never WHICH values are on:
+ * the summary keeps its "N picked" badge, and active-filters.tsx names every
+ * one of them in a chip row above the split.
  *
  * A <summary> is a real control with keyboard support and an exposed role for
  * free, which is what the tab row it replaces never had: role="tab" on an <a>
@@ -76,7 +87,7 @@ export function FacetSection({
   const listId = valueListId(shell, facet.traitType);
 
   return (
-    <details open className={`${SECTION} group`}>
+    <details open={shell === "drawer"} className={`${SECTION} group`}>
       <summary className={`${SUMMARY} ${tone.outline}`}>
         <span aria-hidden="true" className={CHEVRON}>
           ▸
