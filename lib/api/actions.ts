@@ -1,11 +1,18 @@
 "use server";
 
-import { ApiError, browseCollectionNfts, getNftActivity, getNftOwners } from "@/lib/api/client";
+import {
+  ApiError,
+  browseCollectionNfts,
+  getNftActivity,
+  getNftOwners,
+  getWalletPortfolio,
+} from "@/lib/api/client";
 import type { ActivityEvent, NftSummary, OwnershipInterval } from "@/lib/api/client";
 import {
   BROWSE_LIMIT,
   MAX_QUERY_LENGTH,
   TIMELINE_LIMIT,
+  WALLET_LIMIT,
   isBrowseSort,
   traitsWithinCaps,
 } from "@/lib/api/params";
@@ -130,6 +137,40 @@ export async function loadMoreNftOwners(input: {
       limit: TIMELINE_LIMIT,
     });
     return { ok: true, ...page };
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "invalid_cursor") {
+      return { ok: false, reason: "expired" };
+    }
+    return { ok: false, reason: "failed" };
+  }
+}
+
+/**
+ * The wallet grid's page two onwards.
+ *
+ * `collection` is deliberately not a parameter even though the endpoint takes
+ * one: it sits inside the cursor's filter hash, so offering it would mean
+ * resetting to page one on every toggle. The tally chips stay a tally.
+ */
+export type MoreWalletPage =
+  | { ok: true; data: NftSummary[]; nextCursor: string | null; hasMore: boolean }
+  | { ok: false; reason: "expired" | "failed" };
+
+export async function loadMoreWalletNfts(input: {
+  address: string;
+  cursor: string;
+}): Promise<MoreWalletPage> {
+  if (!ADDRESS.test(input.address)) return { ok: false, reason: "failed" };
+
+  try {
+    const portfolio = await getWalletPortfolio(input.address, {
+      // Opaque: echoed verbatim, never parsed, never constructed here.
+      cursor: input.cursor,
+      limit: WALLET_LIMIT,
+    });
+    // Only the grid pages. `collections` and `totalCount` describe the whole
+    // portfolio and are identical on every page, so the island never needs them.
+    return { ok: true, ...portfolio.nfts };
   } catch (error) {
     if (error instanceof ApiError && error.code === "invalid_cursor") {
       return { ok: false, reason: "expired" };

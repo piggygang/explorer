@@ -92,18 +92,31 @@ export function StatBandSkeleton() {
   );
 }
 
-export function WalletGroupsSkeleton({ groups = 2 }: { groups?: number }) {
+/**
+ * The wallet portfolio in flight: the tally sentence, the chip row, the caveat
+ * and the grid — in that order, because that is what WalletPortfolio renders.
+ *
+ * It used to draw per-collection sections with heading blocks, which the
+ * contract removed when the portfolio became one flat grid. A skeleton that
+ * outlives its component is worse than none: it holds space the real thing does
+ * not want and shifts the page when it swaps.
+ */
+export function WalletGroupsSkeleton({ chips = 3 }: { chips?: number }) {
   return (
-    <div className="flex flex-col gap-10">
-      {Array.from({ length: groups }, (_, index) => (
-        <div key={index} className="flex flex-col gap-4">
-          <Skeleton className="h-5 w-44" />
-          <NftGridSkeleton
-            count={4}
-            className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4"
-          />
-        </div>
-      ))}
+    <div>
+      <SkeletonLine w="w-72" />
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {Array.from({ length: chips }, (_, index) => (
+          <Skeleton key={index} className="h-[30px] w-24 !rounded-full" />
+        ))}
+      </div>
+      <div className="mt-3">
+        <SkeletonLine w="w-96" />
+      </div>
+      <NftGridSkeleton
+        count={8}
+        className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4"
+      />
     </div>
   );
 }

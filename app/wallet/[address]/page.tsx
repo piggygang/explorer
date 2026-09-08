@@ -7,7 +7,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { WalletPortfolio } from "@/components/wallet-portfolio";
 import { getWalletPortfolio, listCollections } from "@/lib/api/client";
-import type { Collection } from "@/lib/api/client";
+import type { WalletPortfolio as Portfolio } from "@/lib/api/client";
 import { shorten } from "@/lib/format";
 import { toDisplay, withComingSoon } from "@/lib/collections";
 
@@ -24,29 +24,36 @@ export async function generateMetadata(props: PageProps<"/wallet/[address]">): P
   return {
     title: `Wallet ${shorten(address)}`,
     // The address space is unbounded; there is nothing here worth indexing.
-    robots: { index: false },
+    // `follow` stays on so the piggies linked from here are still discovered —
+    // the same split app/search/page.tsx makes, citing this page.
+    robots: { index: false, follow: true },
   };
 }
 
 async function Portfolio({
   address,
-  collections,
+  portfolio,
 }: {
   address: string;
-  collections: Promise<Collection[]>;
+  portfolio: Promise<Portfolio>;
 }) {
-  const [portfolio, all] = await Promise.all([getWalletPortfolio(address), collections]);
-  return <WalletPortfolio portfolio={portfolio} collections={all} />;
+  return <WalletPortfolio address={address} portfolio={await portfolio} />;
 }
 
 export default async function WalletPage(props: PageProps<"/wallet/[address]">) {
   const { address } = await props.params;
 
-  // Started before the await below so both requests are in flight together.
-  const collectionsPromise = listCollections();
-  const nav = withComingSoon((await collectionsPromise).map(toDisplay));
-
+  // The guard runs before either fetch: an address that cannot be one is not
+  // worth a registry round trip, let alone a portfolio one.
   const valid = BASE58.test(address);
+
+  // Both promises are created before either is awaited, which is what actually
+  // puts them in flight together — the portfolio one used to be created inside
+  // <Portfolio>, i.e. only after this await had already resolved, so the two
+  // calls ran back to back across the Atlantic for no reason.
+  const collectionsPromise = listCollections();
+  const portfolioPromise = valid ? getWalletPortfolio(address) : null;
+  const nav = withComingSoon((await collectionsPromise).map(toDisplay));
 
   return (
     <>
@@ -75,7 +82,8 @@ export default async function WalletPage(props: PageProps<"/wallet/[address]">) 
                     </>
                   }
                 >
-                  <Portfolio address={address} collections={collectionsPromise} />
+                  {/* Non-null: portfolioPromise is created exactly when `valid`. */}
+                  <Portfolio address={address} portfolio={portfolioPromise!} />
                 </Suspense>
               </div>
             </>
