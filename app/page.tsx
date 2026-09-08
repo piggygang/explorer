@@ -42,8 +42,8 @@ export default async function Home() {
   const live = (await listCollections()).map(toDisplay);
   const collections = withComingSoon(live);
   // Supply sums legitimately. Holders NEVER do — stats.holders is distinct
-  // owners PER collection, so adding them would count a wallet that holds all
-  // three three times, and there is no cross-collection aggregate to ask for.
+  // owners PER collection, so adding them would count a wallet once for every
+  // collection it holds, and there is no cross-collection aggregate to ask for.
   //
   // A collection whose stats have not been computed contributes nothing rather
   // than a zero, and the line disappears entirely if none of them have — a

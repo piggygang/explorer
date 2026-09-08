@@ -1,20 +1,23 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { EmptyState } from "@/components/empty-state";
-import { NFT_GRID, NftCard } from "@/components/nft-card";
-import type { Collection, WalletPortfolio as Portfolio } from "@/lib/api/client";
+import { NftCard } from "@/components/nft-card";
+import { WalletGrid } from "@/components/wallet-grid";
+import type { WalletPortfolio as Portfolio } from "@/lib/api/client";
 import { number } from "@/lib/format";
-import { presentation } from "@/lib/collections";
+import { holdsFullGang, presentation } from "@/lib/collections";
 
 /**
  * The tally row and the holdings grid.
  *
  * The contract returns one portfolio: a per-collection tally that is never
- * paginated ("bounded by the number of enabled collections") plus a single
- * keyset page of cards across all of them. So there are no per-collection
- * sections to anchor to any more, and the tally chips are inert — this repo's
- * signal for "nothing to click" — rather than linking somewhere that would mean
- * something different from what they count.
+ * paginated ("bounded by the number of enabled collections") plus a keyset page
+ * of cards across all of them, which WalletGrid appends to. So there are no
+ * per-collection sections to anchor to, and the tally chips stay inert — this
+ * repo's signal for "nothing to click". The endpoint does take a `collection`
+ * filter, but it sits inside the cursor's filter hash, so making the chips
+ * filter would mean resetting paging on every toggle for a grid that already
+ * arrives grouped by collection.
  *
  * Everything cross-collection speaks --brand; each chip sets its own --accent.
  * That keeps the scoping rule legible at a glance: colour means "this
@@ -24,6 +27,7 @@ import { presentation } from "@/lib/collections";
 const TALLY = "flex flex-wrap items-center gap-2";
 const CHIP =
   "inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 font-mono text-[11px] text-ink-muted";
+const RANK = "text-ink-muted/70";
 const DOT = "h-1.5 w-1.5 rounded-full bg-[var(--accent)]";
 const FULL =
   "inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-3 py-1.5 font-mono text-[11px] text-brand";
@@ -32,11 +36,11 @@ const GHOST =
   "mt-4 inline-flex rounded-full border border-line px-4 py-2 text-sm text-ink-muted transition-colors hover:border-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 
 export function WalletPortfolio({
+  address,
   portfolio,
-  collections,
 }: {
+  address: string;
   portfolio: Portfolio;
-  collections: Collection[];
 }) {
   const { totalCount, nfts } = portfolio;
 
@@ -54,11 +58,10 @@ export function WalletPortfolio({
     );
   }
 
-  // badges is always empty in v1 — the contract says to derive a full-set badge
-  // client-side, from the live API list rather than a hard-coded three, so the
-  // day a fourth collection is indexed "every one" keeps meaning every one.
-  const fullGang =
-    collections.length > 0 && portfolio.collections.length === collections.length;
+  // badges is always empty in v1 and the contract says to derive this one
+  // client-side. It is NOT "every enabled collection" — see GANG in
+  // lib/collections.ts for why the Gang is a named three.
+  const fullGang = holdsFullGang(portfolio.collections.map((held) => held.collection.slug));
 
   return (
     <>
@@ -81,11 +84,19 @@ export function WalletPortfolio({
             >
               <span aria-hidden="true" className={DOT} />
               {number(holding.count)} {short || name}
+              {/* Rank ties share the lower value and skip the next, and the
+                  contract lets the server omit it under load — so it is a bare
+                  "#12", never "12 of N". */}
+              {holding.holderRank !== null && (
+                <span className={RANK} title={`Ranked ${number(holding.holderRank)} among ${name} holders`}>
+                  #{number(holding.holderRank)}
+                </span>
+              )}
             </span>
           );
         })}
         {fullGang && (
-          <span className={FULL} title="Holds every indexed collection">
+          <span className={FULL} title="Holds all three Piggy collections">
             Full gang
           </span>
         )}
@@ -96,21 +107,19 @@ export function WalletPortfolio({
         not by this wallet.
       </p>
 
-      <ul className={`${NFT_GRID} mt-8`}>
+      <WalletGrid
+        address={address}
+        initialAddresses={nfts.data.map((nft) => nft.address)}
+        initialCursor={nfts.nextCursor}
+        initialHasMore={nfts.hasMore}
+        total={totalCount}
+      >
         {nfts.data.map((nft, index) => (
           <li key={nft.address} className="flex">
             <NftCard nft={nft} eager={index < 4} showCollection />
           </li>
         ))}
-      </ul>
-
-      {/* The grid is one keyset page. Paging it is ALG-637's, so this says what
-          it is showing rather than pretending the page is the whole portfolio. */}
-      {nfts.hasMore && (
-        <p className={NOTE}>
-          Showing the first {number(nfts.data.length)} of {number(totalCount)}.
-        </p>
-      )}
+      </WalletGrid>
     </>
   );
 }

@@ -42,6 +42,14 @@ export const BROWSE_LIMIT = 24;
 export const TIMELINE_LIMIT = 24;
 
 /**
+ * The wallet portfolio's grid. Same number again, and named again for the same
+ * reason: it is a GRID, so BROWSE_LIMIT's divides-by-2-3-4-6 argument is the one
+ * that applies here — but a wallet is not a collection browse, and a future
+ * change to one must not silently move the other.
+ */
+export const WALLET_LIMIT = 24;
+
+/**
  * The contract's own limits on a trait filter, quoted from TraitFilter's prose
  * and its schema: "At most 16 distinct trait types and 64 values per request",
  * `maxItems: 64` per type, and a value of 1 to 128 characters.

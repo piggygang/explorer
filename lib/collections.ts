@@ -86,6 +86,31 @@ const ANNOUNCED: { slug: keyof typeof PRESENTATION; name: string }[] = [
   { slug: "pig-mud", name: "Pig Mud" },
 ];
 
+/**
+ * The Gang, for the "Full gang" badge — a named set, not "every enabled
+ * collection".
+ *
+ * The frozen contract suggests deriving a full-set badge from the length of
+ * /v1/collections, and that is what this repo did until pig-mud shipped. But
+ * "Full Gang" is not a generic full-set badge: it is a mechanic the raffles spec
+ * already defines, and defines as three — "Holding at least one Piggy from each
+ * of the three collections. Earns the once-per-raffle bonus." DressMe supports
+ * the same three, and lib/links.ts already hardcodes them as DRESSABLE for the
+ * same reason: an external system owns the definition, so a list is the honest
+ * shape.
+ *
+ * Deriving it from the registry would also make the badge quietly re-mean itself
+ * every time a collection is enabled, and would gate it on pig-mud — which has
+ * no marketplace page and a metadata host that answers 530.
+ */
+const GANG: readonly string[] = ["piggy-sol-gang", "piggy-girl-gang", "piggy-gang"];
+
+/** Whether a wallet's holdings cover every collection in the Gang. */
+export function holdsFullGang(slugs: Iterable<string>): boolean {
+  const held = new Set(slugs);
+  return GANG.every((slug) => held.has(slug));
+}
+
 /** A collection the API knows but this map does not still gets the site's
     brand accent rather than an unstyled card. */
 const FALLBACK: CollectionPresentation = {
