@@ -157,6 +157,7 @@ export function api() {
 export async function listCollections(): Promise<Collection[]> {
   const { data, error, response } = await api().GET("/v1/collections", {
     params: { query: { limit: 100 } },
+    ...CACHE,
   });
   if (!data) fail(response.status, error, "listCollections");
   if (data.nextCursor !== null) {
@@ -168,6 +169,7 @@ export async function listCollections(): Promise<Collection[]> {
 export async function getCollection(slug: string): Promise<Collection | null> {
   const { data, error, response } = await api().GET("/v1/collections/{slug}", {
     params: { path: { slug } },
+    ...CACHE,
   });
   if (response.status === 404) return null;
   // Single-resource GETs return the object itself; only listings are enveloped.
