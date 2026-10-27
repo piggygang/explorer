@@ -1,0 +1,12 @@
+# Every browse filter, sort, search and "load more" cursor is a query string,
+# and the trait filters multiply into far more URLs than there are NFTs. The
+# collection page is dynamic, so each one is a fresh server render — crawlers
+# walking them were ~98% of this app's Vercel usage in October 2026.
+#
+# The pages worth indexing carry no query string and stay open: /, each
+# /collections/<slug>, every /nfts/<address> (an unfiltered grid links them
+# bare, and they chain to each other through their neighbour links) and
+# /wallet/<address>.
+User-Agent: *
+Disallow: /*?
+Disallow: /api/
